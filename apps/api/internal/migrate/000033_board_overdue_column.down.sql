@@ -1,0 +1,1 @@
+-- No-op: removing the Overdue column could strand tasks; downgrade by restoring from backup if needed.

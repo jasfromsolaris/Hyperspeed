@@ -1,0 +1,126 @@
+services:
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      # Site address in Caddyfile; use your public team URL host (e.g. www.team.example.com) for HTTPS.
+      CADDY_PUBLIC_HOST: ${CADDY_PUBLIC_HOST:-localhost}
+      # Let's Encrypt account email (override in .env for real deployments).
+      CADDY_EMAIL: ${CADDY_EMAIL:-postmaster@example.com}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
+      - api
+    healthcheck:
+      # Match the vhost Caddy serves (must match CADDY_PUBLIC_HOST inside the container).
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q -O - --header=\"Host: $$CADDY_PUBLIC_HOST\" http://127.0.0.1/health >/dev/null 2>&1 || exit 1",
+        ]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: hyperspeed
+      POSTGRES_PASSWORD: hyperspeed
+      POSTGRES_DB: hyperspeed
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hyperspeed -d hyperspeed"]
+      interval: 3s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 3s
+      retries: 5
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    volumes:
+      - miniodata:/data
+
+  api:
+    build:
+      context: ./apps/api
+      dockerfile: Dockerfile
+      args:
+        VERSION: ${HYPERSPEED_VERSION:-dev}
+        GIT_SHA: ${HYPERSPEED_GIT_SHA:-}
+    ports:
+      - "8080:8080"
+    environment:
+      DATABASE_URL: postgres://hyperspeed:hyperspeed@postgres:5432/hyperspeed?sslmode=disable
+      # Required for org realtime and space file collab WebSocket (presence / Yjs relay).
+      REDIS_URL: redis://redis:6379/0
+      JWT_SECRET: ${JWT_SECRET:-dev-change-me-in-production-min-32-chars-long}
+      DEBUG: ${DEBUG:-1}
+      # 32 bytes base64. Override in your environment for anything non-dev.
+      HS_SSH_ENCRYPTION_KEY: ${HS_SSH_ENCRYPTION_KEY:-MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
+      HTTP_ADDR: :8080
+      # When running behind the bundled reverse proxy, same-origin is typical.
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost}
+      # Same public origin as the browser (scheme + host; no path). Set when using HTTPS team URL.
+      PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-}
+      FILES_S3_ENDPOINT: http://minio:9000
+      FILES_S3_REGION: us-east-1
+      FILES_S3_BUCKET: hyperspeed-files
+      FILES_S3_ACCESS_KEY: minioadmin
+      FILES_S3_SECRET_KEY: minioadmin
+      FILES_S3_FORCE_PATH_STYLE: "true"
+      HS_GIT_WORKDIR_BASE: /var/lib/hyperspeed/git
+    volumes:
+      - gitwork:/var/lib/hyperspeed/git
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:8080/healthz >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+  web:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ""
+        # Set VITE_YJS_COLLAB=false in .env to disable CRDT in the production bundle.
+        VITE_YJS_COLLAB: "${VITE_YJS_COLLAB:-true}"
+    depends_on:
+      - api
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost/ >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
+  miniodata:
+  gitwork:
+  caddy_data:
+  caddy_config:

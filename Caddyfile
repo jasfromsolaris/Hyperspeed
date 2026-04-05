@@ -1,0 +1,22 @@
+{
+	# Required for public Let's Encrypt certificates (set CADDY_EMAIL in .env).
+	email {$CADDY_EMAIL}
+}
+
+# Public hostname: automatic HTTPS (ACME) when CADDY_PUBLIC_HOST is a real DNS name.
+# Default localhost = HTTP only on :80 (local Docker; no TLS).
+{$CADDY_PUBLIC_HOST} {
+	encode gzip
+
+	handle /api/* {
+		reverse_proxy api:8080
+	}
+
+	handle /health {
+		reverse_proxy api:8080
+	}
+
+	handle {
+		reverse_proxy web:80
+	}
+}
