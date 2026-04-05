@@ -1,0 +1,12 @@
+---
+description: Hyperspeed cloud workspace — use MCP tools, not local file edits as substitute
+globs:
+  - "**/*"
+---
+
+# Hyperspeed agent rules
+
+- **Source of truth** for org/spaces/files lives in **Hyperspeed** (via API), not only in this git checkout.
+- Prefer **Hyperspeed MCP tools** when configured: `space.file.read`, `space.list_files`, and especially **`space.file.propose_patch`** for edits. Proposals are reviewed in the web app; they are not applied silently.
+- **Do not** use direct `PutText`-style overwrites for service accounts; the API blocks that. Humans edit in the web UI; agents create **proposals**.
+- Avoid rewriting **local** workspace files as a stand-in for updating cloud files unless the user explicitly wants local-only work.

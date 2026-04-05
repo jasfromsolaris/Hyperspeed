@@ -1,0 +1,7 @@
+# HTTPS for the Hyperspeed DNS control plane (optional compose overlay).
+# https://localhost:8443/health — browser will warn (self-signed).
+
+https://:8443 {
+	tls internal
+	reverse_proxy control-plane:8787
+}

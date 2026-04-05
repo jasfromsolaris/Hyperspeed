@@ -1,0 +1,22 @@
+services:
+  postgres:
+    ports:
+      - "5432:5432"
+
+  redis:
+    ports:
+      - "6379:6379"
+
+  minio:
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+  api:
+    ports:
+      - "8080:8080"
+    environment:
+      DEBUG: "true"
+      # Common local UI ports. The API also relaxes CORS when it detects localhost.
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:5173}
+
