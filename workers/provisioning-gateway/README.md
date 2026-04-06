@@ -1,14 +1,18 @@
 # Provisioning gateway (Cloudflare Worker)
 
-Public edge for **gifted** `*.hyperspeedapp.com` DNS. Verifies per-install HMAC, applies rate limits, and forwards to the **private** Hyperspeed control plane (`apps/control-plane`) using `CONTROL_PLANE_BEARER_TOKEN`.
+Public edge for **gifted** `*.hyperspeedapp.com` DNS. Verifies per-install HMAC, applies rate limits, and forwards to the **private** Hyperspeed control plane using `CONTROL_PLANE_BEARER_TOKEN`.
 
 Self-hosted Hyperspeed APIs never receive the control-plane bearer. They use `PROVISIONING_INSTALL_ID` + `PROVISIONING_INSTALL_SECRET` and call this Worker at `PROVISIONING_BASE_URL`.
 
 ## Hyperspeed operations
 
-Use `CLOUDFLARE_API_TOKEN` from `apps/control-plane/.env`. Wrangler loads it via `scripts/with-cp-env.mjs` (no manual export).
+Wrangler loads operator secrets via `scripts/with-cp-env.mjs` from the first file that exists:
 
-**Token shape:** The **zone DNS-only** token used by `apps/control-plane` for Cloudflare DNS is **not** enough for Workers/KV. For `npm run cf:bootstrap` / `cf:deploy`, use a separate token (or broaden the existing one) with at least **Account → Workers Scripts → Edit**, **Workers KV Storage → Edit**, and **User → User Details → Read** (Wrangler calls `/memberships`). The “Edit Cloudflare Workers” API token template is a good starting point. You can keep two tokens in `.env` if you prefer: e.g. `CLOUDFLARE_API_TOKEN` for DNS (control plane) and `CLOUDFLARE_WORKERS_API_TOKEN` for Wrangler — see below.
+1. Path in **`HYPERSPEED_OPERATOR_ENV`** (optional), or  
+2. **`workers/provisioning-gateway/.env`** — copy from [`.env.example`](.env.example), or  
+3. **`apps/control-plane/.env`** (private monorepo layout only).
+
+**Token shape:** A **zone DNS-only** token is **not** enough for Workers/KV. For `npm run cf:bootstrap` / `cf:deploy`, use a token with at least **Account → Workers Scripts → Edit**, **Workers KV Storage → Edit**, and **User → User Details → Read** (Wrangler calls `/memberships`). The “Edit Cloudflare Workers” API token template is a good starting point. You can set **`CLOUDFLARE_WORKERS_API_TOKEN`** in the same env file if DNS and Workers need different tokens.
 
 1. **One-time KV + `wrangler.toml`:** from `workers/provisioning-gateway`:
 
@@ -18,9 +22,9 @@ Use `CLOUDFLARE_API_TOKEN` from `apps/control-plane/.env`. Wrangler loads it via
 
    This creates two KV namespaces and writes their ids into `wrangler.toml`.
 
-2. **Worker secrets** (also sourced from `apps/control-plane/.env`):
+2. **Worker secrets** (same operator env file as above):
 
-   - Add `WORKER_CONTROL_PLANE_URL` there (URL the Worker will `fetch`, e.g. tunnel or public `https://…` to the control plane — no trailing slash).
+   - `WORKER_CONTROL_PLANE_URL` — URL the Worker will `fetch` (no trailing slash).
    - `CONTROL_PLANE_BEARER_TOKEN` must match the control plane.
 
    Then:
@@ -50,9 +54,9 @@ Use `CLOUDFLARE_API_TOKEN` from `apps/control-plane/.env`. Wrangler loads it via
 node scripts/with-cp-env.mjs -- npx wrangler <subcommand> ...
 ```
 
-## Local dev (with Docker control plane)
+## Local dev
 
-1. Run control plane (e.g. `docker compose -f docker-compose.yml -f docker-compose.provisioning.yml up`).
+1. Run the **control plane** on `http://127.0.0.1:8787` (private monorepo: `docker compose -f docker-compose.yml -f docker-compose.provisioning.yml`, or a remote URL).
 2. `npm install && npm run dev` (Worker on port **8789** by default).
 3. Put a dev install secret in local KV:
 
@@ -64,7 +68,7 @@ node scripts/with-cp-env.mjs -- npx wrangler <subcommand> ...
 
    ```
    CONTROL_PLANE_URL=http://127.0.0.1:8787
-   CONTROL_PLANE_BEARER_TOKEN=<same as apps/control-plane/.env>
+   CONTROL_PLANE_BEARER_TOKEN=<same as control plane service>
    ```
 
 5. Point the API at `http://host.docker.internal:8789` (from Docker) or `http://127.0.0.1:8789` (native API).

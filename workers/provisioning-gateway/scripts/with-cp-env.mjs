@@ -1,6 +1,8 @@
 #!/usr/bin/env node
 /**
- * Loads apps/control-plane/.env so CLOUDFLARE_API_TOKEN is set for Wrangler (non-interactive).
+ * Loads operator Cloudflare / control-plane secrets for Wrangler (non-interactive).
+ * Resolves env file in order: HYPERSPEED_OPERATOR_ENV, workers/provisioning-gateway/.env,
+ * apps/control-plane/.env (private monorepo).
  * Usage: node scripts/with-cp-env.mjs -- npx wrangler whoami
  */
 import { config } from "dotenv";
@@ -11,16 +13,30 @@ import fs from "node:fs";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const workerRoot = path.join(__dirname, "..");
-const cpEnvPath = path.join(workerRoot, "..", "..", "apps", "control-plane", ".env");
+const repoRoot = path.join(workerRoot, "..", "..");
 
-if (!fs.existsSync(cpEnvPath)) {
-  console.error(`Missing ${cpEnvPath}\nCopy apps/control-plane/.env.example and set CLOUDFLARE_API_TOKEN.`);
+const candidates = [];
+const fromEnv = String(process.env.HYPERSPEED_OPERATOR_ENV || "").trim();
+if (fromEnv) {
+  candidates.push(path.isAbsolute(fromEnv) ? fromEnv : path.join(process.cwd(), fromEnv));
+}
+candidates.push(path.join(workerRoot, ".env"));
+candidates.push(path.join(repoRoot, "apps", "control-plane", ".env"));
+
+const cpEnvPath = candidates.find((p) => fs.existsSync(p));
+
+if (!cpEnvPath) {
+  console.error(
+    `No operator env file found. Tried:\n${candidates.map((p) => `  - ${p}`).join("\n")}\n\n` +
+      `Create workers/provisioning-gateway/.env from .env.example, or set HYPERSPEED_OPERATOR_ENV, ` +
+      `or use apps/control-plane/.env in the private monorepo.`
+  );
   process.exit(1);
 }
 
 const result = config({ path: cpEnvPath, quiet: true });
 if (result.error) {
-  console.error("Failed to read control-plane .env:", result.error.message);
+  console.error("Failed to read operator env:", result.error.message);
   process.exit(1);
 }
 
@@ -30,7 +46,7 @@ const workersTok =
   String(process.env.CLOUDFLARE_API_TOKEN || "").trim();
 if (!workersTok) {
   console.error(
-    "Set CLOUDFLARE_WORKERS_API_TOKEN or CLOUDFLARE_API_TOKEN in apps/control-plane/.env for Wrangler."
+    "Set CLOUDFLARE_WORKERS_API_TOKEN or CLOUDFLARE_API_TOKEN in the operator env file for Wrangler."
   );
   process.exit(1);
 }
