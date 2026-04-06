@@ -80,7 +80,7 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost}
       # Same public origin as the browser (scheme + host; no path). Set when using HTTPS team URL.
       PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-}
-      # Optional: Hyperspeed gifted DNS via provisioning gateway (see README_SELF_HOST.md)
+      # Optional: Hyperspeed gifted DNS via provisioning gateway (README_SELF_HOST.md)
       PROVISIONING_BASE_URL: ${PROVISIONING_BASE_URL:-}
       PROVISIONING_INSTALL_ID: ${PROVISIONING_INSTALL_ID:-}
       PROVISIONING_INSTALL_SECRET: ${PROVISIONING_INSTALL_SECRET:-}

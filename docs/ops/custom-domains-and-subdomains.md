@@ -67,18 +67,9 @@ The SPA is designed to call `/api/...` on the **same origin** when built without
 - **Cloudflare API tokens** for the `hyperspeedapp.com` zone must live **only** on infrastructure Hyperspeed operates: the **control-plane** service (see below). They **must not** appear in customer `.env` for the open-source stack.
 - The **control-plane bearer token** must not appear in customer `.env` either. Hyperspeed runs a **provisioning gateway** (Cloudflare Worker) that holds that bearer and talks to the private control plane. The self-hosted API uses **`PROVISIONING_INSTALL_ID`** + **`PROVISIONING_INSTALL_SECRET`** to sign requests to the gateway (scoped to that install).
 
-### Provisioning gateway (`workers/provisioning-gateway`)
+### Hyperspeed-operated gateway and control plane
 
-Hyperspeed deploys a **Worker** that validates install HMAC headers, applies rate limits, looks up the install secret in **KV**, and proxies `POST /v1/claims` and `DELETE /v1/claims/{slug}` to the private control plane using `CONTROL_PLANE_BEARER_TOKEN`. See [`workers/provisioning-gateway/README.md`](../../workers/provisioning-gateway/README.md).
-
-### Control plane (`apps/control-plane`)
-
-The repository includes a small **control-plane** service (Go) that Hyperspeed deploys separately (for example Fly.io, Railway, or a VM). It holds `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ZONE_ID`, upserts **A** records for `{slug}.{BASE_DOMAIN}`, writes an SQLite audit log, and authenticates **only the Worker** (or other private callers) with a static bearer token.
-
-- **Endpoints:** `POST /v1/claims` (body: `slug`, `ipv4`), `DELETE /v1/claims/{slug}` (revoke), `GET /health`.
-- **Not** included in `docker-compose.yml` for end-user self-host; operators who need gifted subdomains run it alongside Hyperspeed-operated DNS.
-
-See [`apps/control-plane/README.md`](../../apps/control-plane/README.md) for environment variables and run instructions.
+Hyperspeed runs a **provisioning gateway** (public edge) that validates install HMAC headers, rate-limits requests, and forwards `POST /v1/claims` and `DELETE /v1/claims/{slug}` to a **private control plane** that holds Cloudflare credentials. Customer stacks never see the control-plane bearer or zone tokens—only **`PROVISIONING_BASE_URL`**, **`PROVISIONING_INSTALL_ID`**, and **`PROVISIONING_INSTALL_SECRET`** on the self-hosted API. Gateway and control-plane source are **not** part of this open-source repository.
 
 ### OSS API integration
 

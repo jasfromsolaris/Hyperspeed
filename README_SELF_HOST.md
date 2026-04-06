@@ -36,12 +36,12 @@ When the UI is served behind nginx with `VITE_API_URL` empty at build time, the 
 
 ### Hyperspeed-hosted subdomain (optional)
 
-If Hyperspeed operates DNS for **`*.hyperspeedapp.com`**, the **public provisioning gateway** (Cloudflare Worker in [`workers/provisioning-gateway/`](workers/provisioning-gateway/)) verifies **per-install HMAC** and proxies to Hyperspeed’s **private control plane**. Your API never receives the control-plane bearer or Cloudflare tokens—only install-scoped credentials:
+If Hyperspeed operates DNS for **`*.hyperspeedapp.com`**, Hyperspeed runs a **provisioning gateway** (edge service) that verifies **per-install HMAC** and talks to Hyperspeed’s **private control plane**. Your API never receives the control-plane bearer or Cloudflare tokens—only install-scoped credentials Hyperspeed gives you:
 
 | Variable | Role |
 |----------|------|
 | `PROVISIONING_BASE_URL` | HTTPS origin of the gateway (no path), e.g. `https://provision.hyperspeedapp.com` |
-| `PROVISIONING_INSTALL_ID` | Install identifier; Hyperspeed stores the matching secret in Worker KV |
+| `PROVISIONING_INSTALL_ID` | Install identifier; Hyperspeed stores the matching secret on the gateway |
 | `PROVISIONING_INSTALL_SECRET` | Shared secret used to sign requests to the gateway (not the control-plane bearer) |
 
 When all three are set, `GET /api/v1/public/instance` reports `provisioning_enabled: true` and `provisioning_base_domain: "hyperspeedapp.com"`. Authenticated users may call `POST /api/v1/provisioning/claim` during **first-time setup** (optional) or from workspace settings. Leave these unset if you only use BYO domains or manual DNS.

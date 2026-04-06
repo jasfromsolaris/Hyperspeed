@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// Headers sent to the public provisioning gateway (Cloudflare Worker).
+// Headers sent to the public provisioning gateway.
 const (
 	HeaderInstallID = "X-Hyperspeed-Install-Id"
 	HeaderTimestamp = "X-Hyperspeed-Timestamp"
@@ -16,7 +16,7 @@ const (
 )
 
 // CanonicalSignPayload builds the string that is HMAC-SHA256 signed for gateway auth.
-// Must match workers/provisioning-gateway/src/crypto.ts canonicalSignPayload.
+// Must match the Hyperspeed provisioning gateway canonical signing payload (private edge implementation).
 func CanonicalSignPayload(timestampUnix int64, method, path string, body []byte) string {
 	h := sha256.Sum256(body)
 	bodyHash := hex.EncodeToString(h[:])

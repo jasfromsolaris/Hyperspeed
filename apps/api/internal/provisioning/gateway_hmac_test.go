@@ -4,7 +4,7 @@ import (
 	"testing"
 )
 
-// Shared with workers/provisioning-gateway/src/crypto.test.ts — keep in sync.
+// Test vectors must stay aligned with the Hyperspeed provisioning gateway (private edge repo).
 func TestCanonicalSignPayload_Vector(t *testing.T) {
 	const (
 		ts       int64 = 1700000000

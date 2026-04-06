@@ -93,4 +93,4 @@ For teams that run Cursor’s **self-hosted cloud agent worker** next to Hypersp
 3. Keep **org API keys** in Hyperspeed; the worker is an execution plane — org mapping and secrets remain in the control plane (Hyperspeed API + Postgres).
 4. Co-locate with Hyperspeed using the same **Docker Compose** or **Kubernetes** stack: add a `cursor-worker` service / Deployment alongside `api`, `web`, Postgres, Redis, and object storage; inject Cursor-provided env vars for worker identity and registration from Cursor’s docs.
 
-See repository `docker-compose.yml` / `docker-compose.dev.yml` for the baseline Hyperspeed topology; add the worker container only when using self-hosted agents.
+See repository `docker-compose.yml` for the baseline Hyperspeed topology; add the worker container only when using self-hosted agents.
