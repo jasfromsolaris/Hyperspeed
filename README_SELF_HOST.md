@@ -1,24 +1,49 @@
 # Hyperspeed — self-hosted Docker
 
-This stack runs Postgres, Redis, the Go API, and the static web UI (nginx proxies `/api` to the API so the browser uses a single origin).
+This stack runs Postgres, Redis, MinIO, the Go API, and the static web UI. **Caddy** is the public entrypoint on **ports 80 and 443**; it proxies `/api` to the API and everything else to the web container (same-origin `/api/...` from the browser).
+
+**Important:** Run Compose from the **repository root**—the folder that contains `docker-compose.yml`, `Caddyfile`, and `apps/`. The API and web images are **built** from `./apps/api` and `./apps/web`; a compose file alone is not enough.
 
 ## Prerequisites
 
-- Docker and Docker Compose
+- Docker and Docker Compose v2 (supports `depends_on` health conditions used in `docker-compose.yml`)
 
-## Quick start
+## Quick start (local Docker)
 
-1. Copy `.env.example` to `.env` and set `JWT_SECRET` to a long random string (at least 32 characters).
+1. Copy `.env.example` to `.env` and set **`JWT_SECRET`** to a long random string (at least 32 characters). For the default local stack, set **`CORS_ORIGIN=http://localhost`** so it matches how you open the app (see below).
 
-2. From the repository root:
+2. From the **repository root**:
 
    ```bash
    docker compose up --build
    ```
 
-3. Open the app at [http://localhost:3000](http://localhost:3000). The API is reachable directly at [http://localhost:8080](http://localhost:8080) (for debugging).
+3. Open the app at **[http://localhost](http://localhost)** (port **80**). **Caddy** serves the site; with default **`CADDY_PUBLIC_HOST=localhost`** this is **HTTP only** (no TLS). The API is also exposed on the host at **[http://localhost:8080](http://localhost:8080)** for debugging—normally you use the UI through Caddy on **80** so `/api` and the SPA share one origin.
 
-4. **Register** opens the **setup wizard** when the database has no organization yet: you create the **singleton workspace** (org) as the first admin in one flow (name, email, password, workspace name, then hostname / go-live notes). After that, add a space (project) and use the board. If an org already exists, **Register** only requests access (pending admin approval when open sign-ups are enabled) or use an **invite** — you do not create another workspace from the dashboard. Realtime updates use WebSockets on `/api/v1/organizations/{orgId}/ws` (proxied through nginx when you use port 3000).
+4. **Register** opens the **setup wizard** when the database has no organization yet: you create the **singleton workspace** (org) as the first admin in one flow (name, email, password, workspace name, then hostname / go-live notes). After that, add a space (project) and use the board. If an org already exists, **Register** only requests access (pending admin approval when open sign-ups are enabled) or use an **invite** — you do not create another workspace from the dashboard. Realtime uses WebSockets under `/api/...` (proxied by Caddy like normal HTTP).
+
+## VPS, cloud, or hosting panel (Docker)
+
+Use this path when you deploy the same `docker-compose.yml` on a server (e.g. Hostinger Docker, a VPS, or any host that runs Compose from a git clone).
+
+1. **Full repository** — Clone or upload the **entire** project (not only `docker-compose.yml`). The build context must include `apps/api` and `apps/web`.
+
+2. **Working directory** — Run commands from the **root** that contains `docker-compose.yml` (the same place as `.env`).
+
+3. **Command** — `docker compose up --build` (or your panel’s equivalent that runs the same file from that root).
+
+4. **Ports** — Compose publishes **80** and **443** (Caddy) and **8080** (API). Your host or panel must allow binding **80/443** if users reach the app on standard HTTPS; if the panel already uses those ports, you will need a different port mapping or their reverse-proxy docs.
+
+5. **Production `.env` minimum** (in addition to `JWT_SECRET` and `HS_SSH_ENCRYPTION_KEY` from `.env.example`):
+
+   | Variable | Role |
+   |----------|------|
+   | `CADDY_PUBLIC_HOST` | Hostname only (e.g. `app.example.com`). **No** `https://`. Caddy uses this for the site block and Let’s Encrypt. |
+   | `CADDY_EMAIL` | Email for Let’s Encrypt registration. |
+   | `CORS_ORIGIN` | Exact browser origin, e.g. `https://app.example.com` (scheme + host, port only if non-default). |
+   | `PUBLIC_API_BASE_URL` | Same public origin as users type in the bar (needed for features that emit absolute API URLs, e.g. IDE preview). |
+
+   Point **DNS** for `CADDY_PUBLIC_HOST` at this server so Let’s Encrypt HTTP-01 can succeed on port **80**.
 
 ### Workspace limit (one organization per database)
 
@@ -29,10 +54,14 @@ The open-source stack allows **at most one organization** in the database. The *
 | Variable | Role |
 |----------|------|
 | `JWT_SECRET` | HMAC key for access tokens (required in production) |
-| `CORS_ORIGIN` | Browser origin allowed for direct API calls (e.g. local Vite on port 5173) |
-| `PUBLIC_APP_URL` | Optional. Public HTTPS origin users will use (e.g. `https://hyperspeed.example.com`). Shown as a hint during onboarding; set when DNS is stable. |
+| `HS_SSH_ENCRYPTION_KEY` | Base64, 32 bytes—required if you use Terminal SSH storage (see `.env.example`) |
+| `CORS_ORIGIN` | Browser origin allowed for API calls. **Docker + Caddy:** use `http://localhost` locally, or your real `https://…` origin in production. **Local Vite:** e.g. `http://localhost:5173` |
+| `PUBLIC_APP_URL` | Optional. Public HTTPS URL hint during onboarding (e.g. `https://hyperspeed.example.com`) |
+| `PUBLIC_API_BASE_URL` | Same scheme+host users use in the browser when the API must emit absolute URLs (see [custom domains doc](docs/ops/custom-domains-and-subdomains.md)) |
+| `CADDY_PUBLIC_HOST` | Hostname for Caddy’s site block (`localhost` = HTTP on :80 only; real FQDN = HTTPS via Let’s Encrypt) |
+| `CADDY_EMAIL` | Let’s Encrypt account email when using a real hostname |
 
-When the UI is served behind nginx with `VITE_API_URL` empty at build time, the SPA calls `/api/...` on the same host, so CORS is not required for that path.
+With Docker, the web image is built with **`VITE_API_URL` empty**; the SPA calls **`/api/...` on the same origin** as the page (via Caddy), so **`CORS_ORIGIN` must match** that origin (e.g. `https://app.example.com` in production).
 
 ### Hyperspeed-hosted subdomain (optional)
 
