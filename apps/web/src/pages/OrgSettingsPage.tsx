@@ -240,6 +240,8 @@ export default function OrgSettingsPage() {
         return "Enter a valid public IPv4 for DNS.";
       case "slug_taken":
         return "That subdomain is already claimed.";
+      case "rate_limited":
+        return "Too many provisioning requests. Try again later.";
       case "provision_gifted_dns requires intended_public_url":
         return "Intended URL is required to create DNS.";
       case "public_ipv4 required when provision_gifted_dns is true":
@@ -493,7 +495,8 @@ export default function OrgSettingsPage() {
                         your team URL here and add DNS at your domain provider yourself.
                       </p>
                       <p className="mt-2 font-mono text-[11px] text-muted-foreground">
-                        Operators: set PROVISIONING_BASE_URL and CONTROL_PLANE_BEARER_TOKEN, then reload
+                        Operators: set PROVISIONING_BASE_URL, PROVISIONING_INSTALL_ID, and
+                        PROVISIONING_INSTALL_SECRET, then reload
                         this page.
                       </p>
                     </div>

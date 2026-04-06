@@ -108,9 +108,10 @@ func main() {
 	_ = objStore.EnsureBucket(ctx)
 
 	provH := &rest.ProvisionHandler{
-		Store:   st,
-		BaseURL: cfg.ProvisioningBaseURL,
-		Token:   cfg.ControlPlaneBearerToken,
+		Store:         st,
+		BaseURL:       cfg.ProvisioningBaseURL,
+		InstallID:     cfg.ProvisioningInstallID,
+		InstallSecret: cfg.ProvisioningInstallSecret,
 	}
 	orgH := &rest.OrgHandler{
 		Store:         st,
@@ -118,12 +119,13 @@ func main() {
 		Provision:     provH,
 	}
 	publicH := &rest.PublicHandler{
-		Store:                   st,
-		ProvisioningBaseURL:     cfg.ProvisioningBaseURL,
-		ControlPlaneBearerToken: cfg.ControlPlaneBearerToken,
-		UpstreamGitHubRepo:      cfg.UpstreamGitHubRepo,
-		UpdateManifestURL:       cfg.UpdateManifestURL,
-		PublicAppURL:            cfg.PublicAppURL,
+		Store:                     st,
+		ProvisioningBaseURL:       cfg.ProvisioningBaseURL,
+		ProvisioningInstallID:     cfg.ProvisioningInstallID,
+		ProvisioningInstallSecret: cfg.ProvisioningInstallSecret,
+		UpstreamGitHubRepo:        cfg.UpstreamGitHubRepo,
+		UpdateManifestURL:         cfg.UpdateManifestURL,
+		PublicAppURL:              cfg.PublicAppURL,
 	}
 	signupReqH := &rest.SignupRequestHandler{Store: st}
 	projH := &rest.SpaceHandler{Store: st, Bus: bus}

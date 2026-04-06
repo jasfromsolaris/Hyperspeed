@@ -65,11 +65,15 @@ The SPA is designed to call `/api/...` on the **same origin** when built without
 ### Security boundary (non-negotiable)
 
 - **Cloudflare API tokens** for the `hyperspeedapp.com` zone must live **only** on infrastructure Hyperspeed operates: the **control-plane** service (see below). They **must not** appear in customer `.env` for the open-source stack.
-- The self-hosted API may hold a **scoped provisioning credential** (`CONTROL_PLANE_BEARER_TOKEN`) that only authorizes that install to call the control plane’s claim endpoint—not DNS admin rights.
+- The **control-plane bearer token** must not appear in customer `.env` either. Hyperspeed runs a **provisioning gateway** (Cloudflare Worker) that holds that bearer and talks to the private control plane. The self-hosted API uses **`PROVISIONING_INSTALL_ID`** + **`PROVISIONING_INSTALL_SECRET`** to sign requests to the gateway (scoped to that install).
+
+### Provisioning gateway (`workers/provisioning-gateway`)
+
+Hyperspeed deploys a **Worker** that validates install HMAC headers, applies rate limits, looks up the install secret in **KV**, and proxies `POST /v1/claims` and `DELETE /v1/claims/{slug}` to the private control plane using `CONTROL_PLANE_BEARER_TOKEN`. See [`workers/provisioning-gateway/README.md`](../../workers/provisioning-gateway/README.md).
 
 ### Control plane (`apps/control-plane`)
 
-The repository includes a small **control-plane** service (Go) that Hyperspeed deploys separately (for example Fly.io, Railway, or a VM). It holds `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ZONE_ID`, upserts **A** records for `{slug}.{BASE_DOMAIN}`, writes an SQLite audit log, and authenticates callers with a static bearer token.
+The repository includes a small **control-plane** service (Go) that Hyperspeed deploys separately (for example Fly.io, Railway, or a VM). It holds `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ZONE_ID`, upserts **A** records for `{slug}.{BASE_DOMAIN}`, writes an SQLite audit log, and authenticates **only the Worker** (or other private callers) with a static bearer token.
 
 - **Endpoints:** `POST /v1/claims` (body: `slug`, `ipv4`), `DELETE /v1/claims/{slug}` (revoke), `GET /health`.
 - **Not** included in `docker-compose.yml` for end-user self-host; operators who need gifted subdomains run it alongside Hyperspeed-operated DNS.
@@ -78,13 +82,13 @@ See [`apps/control-plane/README.md`](../../apps/control-plane/README.md) for env
 
 ### OSS API integration
 
-When the self-hosted API is configured with **`PROVISIONING_BASE_URL`** and **`CONTROL_PLANE_BEARER_TOKEN`**, it exposes:
+When the self-hosted API is configured with **`PROVISIONING_BASE_URL`**, **`PROVISIONING_INSTALL_ID`**, and **`PROVISIONING_INSTALL_SECRET`**, it exposes:
 
-- **`GET /api/v1/public/instance`** — `provisioning_enabled`, and when provisioning is enabled `provisioning_base_domain` is always `hyperspeedapp.com` (gifted DNS is `*.hyperspeedapp.com`). No secrets.
-- **`POST /api/v1/provisioning/claim`** (authenticated) — forwards `slug` and `ipv4` to `{PROVISIONING_BASE_URL}/v1/claims`. Stable error codes include `invalid_slug`, `invalid_ipv4`, `slug_taken`, `provisioning_unavailable`.
-- **`PATCH /api/v1/organizations/{orgId}`** (org `manage`) — same as today for `intended_public_url`, plus optional **`provision_gifted_dns`**: when `true`, include **`public_ipv4`**. The server calls the control plane **first** (same as `POST .../provisioning/claim`), then saves `intended_public_url` only if the claim succeeds. The intended URL must be **`https://{slug}.hyperspeedapp.com`** for this path. This keeps a single “Save & create DNS” action in **Workspace settings** without exposing Cloudflare tokens.
+- **`GET /api/v1/public/instance`** — `provisioning_enabled`, and when provisioning is enabled `provisioning_base_domain` is always `hyperspeedapp.com` (gifted DNS is `*.hyperspeedapp.com`). No secrets in the response.
+- **`POST /api/v1/provisioning/claim`** (authenticated) — signs and forwards `slug` and `ipv4` to `{PROVISIONING_BASE_URL}/v1/claims`. Stable error codes include `invalid_slug`, `invalid_ipv4`, `slug_taken`, `rate_limited`, `provisioning_unavailable`.
+- **`PATCH /api/v1/organizations/{orgId}`** (org `manage`) — same as today for `intended_public_url`, plus optional **`provision_gifted_dns`**: when `true`, include **`public_ipv4`**. The server calls the gateway **first** (same as `POST .../provisioning/claim`), then saves `intended_public_url` only if the claim succeeds. The intended URL must be **`https://{slug}.hyperspeedapp.com`** for this path. This keeps a single “Save & create DNS” action in **Workspace settings** without exposing Cloudflare tokens.
 
-The OSS stack **never** stores Cloudflare zone credentials.
+The OSS stack **never** stores Cloudflare zone credentials or the control-plane bearer.
 
 See [README_SELF_HOST.md](../../README_SELF_HOST.md).
 

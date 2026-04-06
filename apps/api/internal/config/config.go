@@ -55,10 +55,12 @@ type Config struct {
 	PublicAppURL string
 	// GitWorkdirBase is the directory for per-space git clones (IDE Git integration). Empty = disabled.
 	GitWorkdirBase string
-	// ProvisioningBaseURL is the Hyperspeed-operated control-plane origin (HTTPS, no trailing path). Empty = provisioning disabled.
+	// ProvisioningBaseURL is the public Hyperspeed provisioning gateway origin (HTTPS Worker URL, no trailing path). Empty = provisioning disabled.
 	ProvisioningBaseURL string
-	// ControlPlaneBearerToken is the same Bearer token as CONTROL_PLANE_BEARER_TOKEN on the control plane (never a Cloudflare zone token).
-	ControlPlaneBearerToken string
+	// ProvisioningInstallID identifies this deployment to the gateway; Hyperspeed stores the matching secret in Worker KV.
+	ProvisioningInstallID string
+	// ProvisioningInstallSecret is the HMAC key shared with the gateway for this install (not the control-plane bearer).
+	ProvisioningInstallSecret string
 	// UpstreamGitHubRepo is optional "owner/name" for client-side update checks (public metadata only).
 	UpstreamGitHubRepo string
 	// UpdateManifestURL is optional HTTPS URL to a static JSON manifest for update checks (public metadata only).
@@ -127,8 +129,9 @@ func Load() Config {
 		PublicAPIBaseURL:                   getEnv("PUBLIC_API_BASE_URL", ""),
 		PublicAppURL:                       strings.TrimSpace(getEnv("PUBLIC_APP_URL", "")),
 		GitWorkdirBase:                     getEnv("HS_GIT_WORKDIR_BASE", ""),
-		ProvisioningBaseURL:                strings.TrimSpace(getEnv("PROVISIONING_BASE_URL", "")),
-		ControlPlaneBearerToken:            strings.TrimSpace(getEnv("CONTROL_PLANE_BEARER_TOKEN", "")),
+		ProvisioningBaseURL:       strings.TrimSpace(getEnv("PROVISIONING_BASE_URL", "")),
+		ProvisioningInstallID:     strings.TrimSpace(getEnv("PROVISIONING_INSTALL_ID", "")),
+		ProvisioningInstallSecret: strings.TrimSpace(getEnv("PROVISIONING_INSTALL_SECRET", "")),
 		UpstreamGitHubRepo:                 strings.TrimSpace(getEnv("UPSTREAM_GITHUB_REPO", "")),
 		UpdateManifestURL:                  strings.TrimSpace(getEnv("UPDATE_MANIFEST_URL", "")),
 		Debug:                              envBool("DEBUG") || envBool("HYPERSPEED_DEBUG"),

@@ -80,6 +80,10 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost}
       # Same public origin as the browser (scheme + host; no path). Set when using HTTPS team URL.
       PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-}
+      # Optional: Hyperspeed gifted DNS via public gateway (see README_SELF_HOST.md, workers/provisioning-gateway/)
+      PROVISIONING_BASE_URL: ${PROVISIONING_BASE_URL:-}
+      PROVISIONING_INSTALL_ID: ${PROVISIONING_INSTALL_ID:-}
+      PROVISIONING_INSTALL_SECRET: ${PROVISIONING_INSTALL_SECRET:-}
       FILES_S3_ENDPOINT: http://minio:9000
       FILES_S3_REGION: us-east-1
       FILES_S3_BUCKET: hyperspeed-files

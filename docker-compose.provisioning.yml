@@ -1,17 +1,22 @@
-# Optional overlay: Hyperspeed DNS control plane + API provisioning.
+# Optional overlay: Hyperspeed DNS control plane + API → provisioning gateway (Worker dev).
 # Requires Cloudflare DNS Edit access to the zone for GIFTED_DNS_BASE_DOMAIN.
 #
-# Secrets live in apps/control-plane/.env (CONTROL_PLANE_BEARER_TOKEN, CLOUDFLARE_API_TOKEN,
-# CLOUDFLARE_ZONE_ID). They are injected via env_file below — save that file to disk before
-# `docker compose up` (an unsaved buffer leaves a 0-byte file and the control-plane will exit).
-# Optional: copy the same keys into the repo-root .env and use ${VAR} elsewhere; avoid Windows
-# User env placeholders (e.g. CLOUDFLARE_API_TOKEN=x) overriding real values.
+# Secrets for the control plane only: apps/control-plane/.env (CONTROL_PLANE_BEARER_TOKEN,
+# CLOUDFLARE_API_TOKEN, CLOUDFLARE_ZONE_ID). Do not mount this file into the API service.
+#
+# Gifted DNS flow: API signs requests to the Worker (wrangler dev on port 8789 by default); Worker
+# proxies to the control plane with CONTROL_PLANE_BEARER_TOKEN. See workers/provisioning-gateway/README.md.
+#
+# Repo-root .env (for the API container):
+#   PROVISIONING_BASE_URL=http://host.docker.internal:8789
+#   PROVISIONING_INSTALL_ID=dev
+#   PROVISIONING_INSTALL_SECRET=<same as wrangler kv put install:dev ...>
 #
 # Usage:
 #   docker compose -f docker-compose.yml -f docker-compose.dev.yml -f docker-compose.provisioning.yml up -d --build
 #
-# Inside Docker, the API uses http://control-plane:8787 (not TLS). For HTTPS from your machine:
-#   https://localhost:8443/health  (self-signed; Caddy tls internal)
+# Control plane HTTPS (self-signed) from host: https://localhost:8443/health
+# Control plane HTTP: http://localhost:8787/health
 
 services:
   control-plane:
@@ -34,10 +39,12 @@ services:
       retries: 5
 
   api:
-    env_file:
-      - apps/control-plane/.env
     environment:
-      PROVISIONING_BASE_URL: http://control-plane:8787
+      PROVISIONING_BASE_URL: ${PROVISIONING_BASE_URL:-http://host.docker.internal:8789}
+      PROVISIONING_INSTALL_ID: ${PROVISIONING_INSTALL_ID:-dev}
+      PROVISIONING_INSTALL_SECRET: ${PROVISIONING_INSTALL_SECRET:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
 
   caddy-cp:
     image: caddy:2-alpine

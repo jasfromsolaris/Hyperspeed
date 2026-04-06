@@ -1,0 +1,21 @@
+{
+  "name": "hyperspeed-provisioning-gateway",
+  "private": true,
+  "scripts": {
+    "test": "vitest run",
+    "dev": "wrangler dev --port 8789",
+    "cf:whoami": "node scripts/with-cp-env.mjs -- npx wrangler whoami",
+    "cf:bootstrap": "node scripts/bootstrap-kv.mjs",
+    "cf:deploy": "node scripts/with-cp-env.mjs -- npx wrangler deploy",
+    "cf:tail": "node scripts/with-cp-env.mjs -- npx wrangler tail",
+    "cf:secrets": "node scripts/sync-secrets-from-cp.mjs",
+    "cf:ensure-dns": "node scripts/ensure-provision-gw-dns.mjs"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20241127.0",
+    "dotenv": "^17.4.1",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.5",
+    "wrangler": "^3.114.0"
+  }
+}

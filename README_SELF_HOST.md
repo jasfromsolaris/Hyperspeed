@@ -36,14 +36,15 @@ When the UI is served behind nginx with `VITE_API_URL` empty at build time, the 
 
 ### Hyperspeed-hosted subdomain (optional)
 
-If Hyperspeed operates DNS for **`*.hyperspeedapp.com`** via the **control-plane** service, configure the API so it can forward **claims** (never Cloudflare tokens):
+If Hyperspeed operates DNS for **`*.hyperspeedapp.com`**, the **public provisioning gateway** (Cloudflare Worker in [`workers/provisioning-gateway/`](workers/provisioning-gateway/)) verifies **per-install HMAC** and proxies to Hyperspeed’s **private control plane**. Your API never receives the control-plane bearer or Cloudflare tokens—only install-scoped credentials:
 
 | Variable | Role |
 |----------|------|
-| `PROVISIONING_BASE_URL` | Base URL of the control plane (no path), e.g. `https://cp.example.com` |
-| `CONTROL_PLANE_BEARER_TOKEN` | Bearer token shared with the control plane (not a Cloudflare token) |
+| `PROVISIONING_BASE_URL` | HTTPS origin of the gateway (no path), e.g. `https://provision.hyperspeedapp.com` |
+| `PROVISIONING_INSTALL_ID` | Install identifier; Hyperspeed stores the matching secret in Worker KV |
+| `PROVISIONING_INSTALL_SECRET` | Shared secret used to sign requests to the gateway (not the control-plane bearer) |
 
-When both `PROVISIONING_BASE_URL` and `CONTROL_PLANE_BEARER_TOKEN` are set, `GET /api/v1/public/instance` reports `provisioning_enabled: true` and `provisioning_base_domain: "hyperspeedapp.com"` (gifted hostnames are always `*.hyperspeedapp.com` in the product UI). Authenticated users may call `POST /api/v1/provisioning/claim` during **first-time setup** (optional) or from workspace settings. Leave these unset if you only use BYO domains or manual DNS.
+When all three are set, `GET /api/v1/public/instance` reports `provisioning_enabled: true` and `provisioning_base_domain: "hyperspeedapp.com"`. Authenticated users may call `POST /api/v1/provisioning/claim` during **first-time setup** (optional) or from workspace settings. Leave these unset if you only use BYO domains or manual DNS.
 
 ### Upgrading from older releases
 

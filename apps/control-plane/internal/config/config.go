@@ -17,8 +17,17 @@ type Config struct {
 }
 
 func Load() Config {
+	httpAddr := strings.TrimSpace(os.Getenv("HTTP_ADDR"))
+	if httpAddr == "" {
+		if p := strings.TrimSpace(os.Getenv("PORT")); p != "" {
+			// Render, Fly, Railway, etc. inject PORT; bind on all interfaces.
+			httpAddr = ":" + p
+		} else {
+			httpAddr = ":8787"
+		}
+	}
 	return Config{
-		HTTPAddr:           strings.TrimSpace(getEnv("HTTP_ADDR", ":8787")),
+		HTTPAddr:           httpAddr,
 		BearerToken:        strings.TrimSpace(os.Getenv("CONTROL_PLANE_BEARER_TOKEN")),
 		CloudflareAPIToken: strings.TrimSpace(os.Getenv("CLOUDFLARE_API_TOKEN")),
 		CloudflareZoneID:   strings.TrimSpace(os.Getenv("CLOUDFLARE_ZONE_ID")),

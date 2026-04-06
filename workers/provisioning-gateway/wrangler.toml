@@ -1,0 +1,18 @@
+# KV bindings created by npm run cf:bootstrap (see scripts/bootstrap-kv.mjs)
+name = "hyperspeed-provisioning-gateway"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
+# Custom hostname on hyperspeedapp.com (needs Zone → Workers Routes:Edit on the token).
+workers_dev = false
+
+[[routes]]
+pattern = "provision-gw.hyperspeedapp.com/*"
+zone_name = "hyperspeedapp.com"
+
+[[kv_namespaces]]
+binding = "INSTALL_SECRETS"
+id = "1c45f1d7aa444a62ab454997b721eb66"
+
+[[kv_namespaces]]
+binding = "RATE_LIMITS"
+id = "41daddec7b874eb9be86a1fde31541c2"

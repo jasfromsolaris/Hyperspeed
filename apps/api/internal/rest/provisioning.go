@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 
@@ -22,12 +20,14 @@ import (
 	"hyperspeed/api/internal/version"
 )
 
-// ProvisionHandler forwards gifted-subdomain claims to the Hyperspeed-operated control plane.
+// ProvisionHandler forwards gifted-subdomain claims to the Hyperspeed-operated provisioning gateway
+// (Cloudflare Worker), which authenticates install HMAC and proxies to the private control plane.
 type ProvisionHandler struct {
-	Store      *store.Store
-	BaseURL    string // e.g. https://control-plane.example.com (no trailing path)
-	Token      string // Bearer token shared with control plane
-	HTTPClient *http.Client
+	Store         *store.Store
+	BaseURL       string // public gateway origin, e.g. https://provision.hyperspeedapp.com (no trailing path)
+	InstallID     string
+	InstallSecret string
+	HTTPClient    *http.Client
 }
 
 type claimBody struct {
@@ -42,13 +42,15 @@ func (h *ProvisionHandler) httpClient() *http.Client {
 	return &http.Client{Timeout: 45 * time.Second}
 }
 
-// Configured reports whether control-plane URL and bearer token are set.
+// Configured reports whether provisioning gateway URL and install credentials are set.
 func (h *ProvisionHandler) Configured() bool {
 	return h.configured()
 }
 
 func (h *ProvisionHandler) configured() bool {
-	return strings.TrimSpace(h.BaseURL) != "" && strings.TrimSpace(h.Token) != ""
+	return strings.TrimSpace(h.BaseURL) != "" &&
+		strings.TrimSpace(h.InstallID) != "" &&
+		strings.TrimSpace(h.InstallSecret) != ""
 }
 
 // postClaimAndSetOrg POSTs to the control plane and sets gifted_subdomain_slug on success.
@@ -56,7 +58,7 @@ func (h *ProvisionHandler) postClaimAndSetOrg(ctx context.Context, orgID uuid.UU
 	if !h.configured() {
 		return 0, nil, provisioning.ErrProvisioningUnavailable()
 	}
-	status, body, netErr := provisioning.PostClaims(ctx, h.BaseURL, h.Token, h.httpClient(), slug, ipv4)
+	status, body, netErr := provisioning.PostClaims(ctx, h.BaseURL, h.InstallID, h.InstallSecret, h.httpClient(), slug, ipv4)
 	if err := provisioning.ErrFromClaimResponse(status, body, netErr); err != nil {
 		return 0, nil, err
 	}
@@ -158,29 +160,13 @@ func (h *ProvisionHandler) DeleteClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	base := strings.TrimRight(strings.TrimSpace(h.BaseURL), "/")
-	u, err := url.Parse(base + "/v1/claims/" + url.PathEscape(slugStr))
-	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "provisioning_unavailable")
-		return
-	}
-	req, err := http.NewRequestWithContext(r.Context(), http.MethodDelete, u.String(), nil)
-	if err != nil {
-		httpx.Error(w, http.StatusInternalServerError, "provisioning_unavailable")
-		return
-	}
-	req.Header.Set("Authorization", "Bearer "+strings.TrimSpace(h.Token))
-
-	client := h.httpClient()
-	resp, err := client.Do(req)
-	if err != nil {
+	resp, respBody, netErr := provisioning.DeleteGatewayClaim(r.Context(), h.BaseURL, h.InstallID, h.InstallSecret, h.httpClient(), slugStr)
+	if netErr != nil {
 		httpx.Error(w, http.StatusBadGateway, "provisioning_unavailable")
 		return
 	}
-	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(resp.Body)
 
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 || resp.StatusCode == http.StatusNotFound {
+	if resp >= 200 && resp < 300 || resp == http.StatusNotFound {
 		if _, err := h.Store.ClearOrgGiftedSubdomainSlugIfMatch(r.Context(), orgID, slugStr); err != nil {
 			httpx.Error(w, http.StatusInternalServerError, "clear claim")
 			return
@@ -188,7 +174,7 @@ func (h *ProvisionHandler) DeleteClaim(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
-	if resp.StatusCode == http.StatusUnauthorized {
+	if resp == http.StatusUnauthorized {
 		httpx.Error(w, http.StatusBadGateway, "provisioning_unavailable")
 		return
 	}
@@ -205,9 +191,10 @@ func (h *ProvisionHandler) DeleteClaim(w http.ResponseWriter, r *http.Request) {
 // PublicHandler exposes non-secret instance metadata for the SPA.
 type PublicHandler struct {
 	Store *store.Store
-	// ProvisioningBaseURL and ControlPlaneBearerToken non-empty means customers can call POST .../provisioning/claim
-	ProvisioningBaseURL     string
-	ControlPlaneBearerToken string
+	// Provisioning gateway URL + install credentials enable POST /api/v1/provisioning/claim and related flows.
+	ProvisioningBaseURL       string
+	ProvisioningInstallID     string
+	ProvisioningInstallSecret string
 	// UpstreamGitHubRepo is optional "owner/name" for SPA update checks against GitHub releases.
 	UpstreamGitHubRepo string
 	// UpdateManifestURL is optional HTTPS URL to a static JSON manifest for update checks.
@@ -218,7 +205,9 @@ type PublicHandler struct {
 
 // Instance GET /api/v1/public/instance
 func (h *PublicHandler) Instance(w http.ResponseWriter, r *http.Request) {
-	prov := strings.TrimSpace(h.ProvisioningBaseURL) != "" && strings.TrimSpace(h.ControlPlaneBearerToken) != ""
+	prov := strings.TrimSpace(h.ProvisioningBaseURL) != "" &&
+		strings.TrimSpace(h.ProvisioningInstallID) != "" &&
+		strings.TrimSpace(h.ProvisioningInstallSecret) != ""
 	out := map[string]any{
 		"provisioning_enabled": prov,
 		"version":              version.Version,

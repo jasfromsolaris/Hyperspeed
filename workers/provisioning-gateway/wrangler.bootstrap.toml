@@ -1,0 +1,4 @@
+# Minimal config for: wrangler kv namespace create ... --config wrangler.bootstrap.toml
+name = "hyperspeed-provisioning-gateway"
+main = "src/index.ts"
+compatibility_date = "2024-11-01"
