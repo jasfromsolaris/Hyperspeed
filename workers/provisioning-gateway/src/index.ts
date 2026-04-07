@@ -178,7 +178,7 @@ async function handleBootstrap(req: Request, env: Env, ip: string): Promise<Resp
     return json(500, { error: "bootstrap_misconfigured" });
   }
   if (!provisioning_base_url) {
-    provisioning_base_url = "https://provision.hyperspeedapp.com";
+    provisioning_base_url = "https://provision-gw.hyperspeedapp.com";
   }
 
   await env.INSTALL_SECRETS.delete(key);
