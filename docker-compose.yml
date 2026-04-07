@@ -1,6 +1,9 @@
 services:
   caddy:
-    image: caddy:2-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.caddy
+    image: hyperspeed-caddy:local
     ports:
       - "80:80"
       - "443:443"
@@ -10,7 +13,6 @@ services:
       # Let's Encrypt account email (override in .env for real deployments).
       CADDY_EMAIL: ${CADDY_EMAIL:-postmaster@example.com}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:

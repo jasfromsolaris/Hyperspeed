@@ -7,7 +7,7 @@ alwaysApply: true
 
 When you change code or config that the **running stack** must pick up, **rebuild and restart** automatically at the end of the task—do not only suggest commands.
 
-**Applies especially to:** `apps/api/**`, `apps/web/**`, `docker-compose*.yml`, Dockerfiles under `apps/api` or `apps/web`, and root `Caddyfile` when it affects the proxy.
+**Applies especially to:** `apps/api/**`, `apps/web/**`, `docker-compose*.yml`, Dockerfiles under `apps/api` or `apps/web`, root `Dockerfile.caddy`, and root `Caddyfile` when it affects the proxy.
 
 **Default command** (from the Hyperspeed repo root):
 

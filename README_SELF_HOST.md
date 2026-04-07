@@ -2,7 +2,7 @@
 
 This stack runs Postgres, Redis, MinIO, the Go API, and the static web UI. **Caddy** is the public entrypoint on **ports 80 and 443**; it proxies `/api` to the API and everything else to the web container (same-origin `/api/...` from the browser).
 
-**Important:** Run Compose from the **repository root**—the folder that contains `docker-compose.yml`, `Caddyfile`, and `apps/`. The API and web images are **built** from `./apps/api` and `./apps/web`; a compose file alone is not enough.
+**Important:** Run Compose from the **repository root**—the folder that contains `docker-compose.yml`, `Caddyfile`, `Dockerfile.caddy`, and `apps/`. The API and web images are **built** from `./apps/api` and `./apps/web`; **Caddy** is built from [`Dockerfile.caddy`](Dockerfile.caddy), which copies `Caddyfile` into the image (no host bind mount—works on hosts where bind mounts misbehave). After editing `Caddyfile`, rebuild Caddy: `docker compose up -d --build caddy`.
 
 ## Prerequisites
 
