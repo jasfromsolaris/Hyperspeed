@@ -32,6 +32,7 @@ import (
 	"hyperspeed/api/internal/migrate"
 	"hyperspeed/api/internal/openrouter"
 	"hyperspeed/api/internal/overduetasks"
+	"hyperspeed/api/internal/provisioning"
 	"hyperspeed/api/internal/rest"
 	"hyperspeed/api/internal/store"
 	"hyperspeed/api/internal/terminal"
@@ -41,6 +42,10 @@ import (
 
 func main() {
 	cfg := config.Load()
+	if err := provisioning.ExchangeBootstrapIfNeeded(context.Background(), &cfg); err != nil {
+		slog.Error("provisioning bootstrap", "err", err)
+		os.Exit(1)
+	}
 	if err := cfg.Validate(); err != nil {
 		slog.Error("config", "err", err)
 		os.Exit(1)
