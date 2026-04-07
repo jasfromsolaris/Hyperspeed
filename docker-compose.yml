@@ -67,8 +67,8 @@ services:
       args:
         VERSION: ${HYPERSPEED_VERSION:-dev}
         GIT_SHA: ${HYPERSPEED_GIT_SHA:-}
-    ports:
-      - "8080:8080"
+    # No host port: API is reached via Caddy -> api:8080 on the Docker network only.
+    # Publishing 8080 breaks shared hosts where 8080 is already taken; use /api on Caddy or a compose override to expose.
     environment:
       DATABASE_URL: postgres://hyperspeed:hyperspeed@postgres:5432/hyperspeed?sslmode=disable
       # Required for org realtime and space file collab WebSocket (presence / Yjs relay).
