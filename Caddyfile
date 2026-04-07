@@ -1,11 +1,12 @@
 {
-	# Required for public Let's Encrypt certificates (set CADDY_EMAIL in .env).
+	# Used when you add a TLS site block later; optional for HTTP-only.
 	email {$CADDY_EMAIL}
 }
 
-# Public hostname: automatic HTTPS (ACME) when CADDY_PUBLIC_HOST is a real DNS name.
-# Default localhost = HTTP only on :80 (local Docker; no TLS).
-{$CADDY_PUBLIC_HOST} {
+# HTTP on :80 inside the container (any Host header — localhost, server IP, or domain).
+# Default compose maps host port 18080 → 80 so first deploy works without binding host 80/443.
+# For HTTPS with automatic certs at the app, replace this block with your hostname — see README_SELF_HOST.md.
+http:// {
 	encode gzip
 
 	handle /api/* {

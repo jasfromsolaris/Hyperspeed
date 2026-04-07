@@ -28,7 +28,7 @@ The SPA is designed to call `/api/...` on the **same origin** when built without
    Terminate HTTPS on the customer’s edge (Caddy, Traefik, or nginx) with a valid certificate (Let’s Encrypt HTTP-01 or DNS-01 is typical).
 
 3. **Reverse proxy**  
-   Route `/api` (including WebSocket upgrades) to the API service and serve the static web UI on `/`. The repository [Caddyfile](../../Caddyfile) shows a minimal **HTTP** example on `:80` for local Compose; **production** should use a real hostname block with HTTPS, for example:
+   Route `/api` (including WebSocket upgrades) to the API service and serve the static web UI on `/`. The repository [Caddyfile](../../Caddyfile) uses an **`http://`** site block (any Host) on container port **80**; default compose maps host **18080** → **80**. **Production** with automatic TLS at your app often uses a reverse proxy or a hostname block, for example:
 
    ```caddy
    app.customer.com {
@@ -67,9 +67,18 @@ The SPA is designed to call `/api/...` on the **same origin** when built without
 - **Cloudflare API tokens** for the `hyperspeedapp.com` zone must live **only** on infrastructure Hyperspeed operates: the **control-plane** service (see below). They **must not** appear in customer `.env` for the open-source stack.
 - The **control-plane bearer token** must not appear in customer `.env` either. Hyperspeed runs a **provisioning gateway** (Cloudflare Worker) that holds that bearer and talks to the private control plane. The self-hosted API uses **`PROVISIONING_INSTALL_ID`** + **`PROVISIONING_INSTALL_SECRET`** to sign requests to the gateway (scoped to that install).
 
-### Hyperspeed-operated gateway and control plane
+### Provisioning gateway (`workers/provisioning-gateway`)
 
-Hyperspeed runs a **provisioning gateway** (public edge) that validates install HMAC headers, rate-limits requests, and forwards `POST /v1/claims` and `DELETE /v1/claims/{slug}` to a **private control plane** that holds Cloudflare credentials. Customer stacks never see the control-plane bearer or zone tokens—only **`PROVISIONING_BASE_URL`**, **`PROVISIONING_INSTALL_ID`**, and **`PROVISIONING_INSTALL_SECRET`** on the self-hosted API. Gateway and control-plane source are **not** part of this open-source repository.
+Hyperspeed deploys a **Worker** that validates install HMAC headers, applies rate limits, looks up the install secret in **KV**, and proxies `POST /v1/claims` and `DELETE /v1/claims/{slug}` to the private control plane using `CONTROL_PLANE_BEARER_TOKEN`. See [`workers/provisioning-gateway/README.md`](../../workers/provisioning-gateway/README.md).
+
+### Control plane (`apps/control-plane`)
+
+The repository includes a small **control-plane** service (Go) that Hyperspeed deploys separately (for example Fly.io, Railway, or a VM). It holds `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ZONE_ID`, upserts **A** records for `{slug}.{BASE_DOMAIN}`, writes an SQLite audit log, and authenticates **only the Worker** (or other private callers) with a static bearer token.
+
+- **Endpoints:** `POST /v1/claims` (body: `slug`, `ipv4`), `DELETE /v1/claims/{slug}` (revoke), `GET /health`.
+- **Not** included in `docker-compose.yml` for end-user self-host; operators who need gifted subdomains run it alongside Hyperspeed-operated DNS.
+
+See [`apps/control-plane/README.md`](../../apps/control-plane/README.md) for environment variables and run instructions.
 
 ### OSS API integration
 

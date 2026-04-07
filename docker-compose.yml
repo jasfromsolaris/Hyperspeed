@@ -5,13 +5,9 @@ services:
       dockerfile: Dockerfile.caddy
     image: hyperspeed-caddy:local
     ports:
-      # Host ports (override in .env if 80/443 are already in use on the server, e.g. shared hosting).
-      - "${CADDY_HTTP_PORT:-80}:80"
-      - "${CADDY_HTTPS_PORT:-443}:443"
+      # Default 18080 avoids "address already in use" on hosts where 80/443/8080 are taken (paste-and-deploy).
+      - "${CADDY_HTTP_PORT:-18080}:80"
     environment:
-      # Site address in Caddyfile; use your public team URL host (e.g. www.team.example.com) for HTTPS.
-      CADDY_PUBLIC_HOST: ${CADDY_PUBLIC_HOST:-localhost}
-      # Let's Encrypt account email (override in .env for real deployments).
       CADDY_EMAIL: ${CADDY_EMAIL:-postmaster@example.com}
     volumes:
       - caddy_data:/data
@@ -20,12 +16,7 @@ services:
       - web
       - api
     healthcheck:
-      # Match the vhost Caddy serves (must match CADDY_PUBLIC_HOST inside the container).
-      test:
-        [
-          "CMD-SHELL",
-          "wget -q -O - --header=\"Host: $$CADDY_PUBLIC_HOST\" http://127.0.0.1/health >/dev/null 2>&1 || exit 1",
-        ]
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1/health >/dev/null 2>&1 || exit 1"]
       interval: 10s
       timeout: 3s
       retries: 10
@@ -79,8 +70,8 @@ services:
       # 32 bytes base64. Override in your environment for anything non-dev.
       HS_SSH_ENCRYPTION_KEY: ${HS_SSH_ENCRYPTION_KEY:-MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=}
       HTTP_ADDR: :8080
-      # When running behind the bundled reverse proxy, same-origin is typical.
-      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost}
+      # Default matches default Caddy host port (DEBUG=1 still allows any origin for first deploy).
+      CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:18080}
       # Same public origin as the browser (scheme + host; no path). Set when using HTTPS team URL.
       PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-}
       # Optional: Hyperspeed gifted DNS via provisioning gateway (see README_SELF_HOST.md)
