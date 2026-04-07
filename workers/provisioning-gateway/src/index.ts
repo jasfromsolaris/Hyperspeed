@@ -11,6 +11,7 @@ const MAX_SKEW_SEC = 300;
 const LIMIT_IP_PER_MINUTE = 60;
 const LIMIT_POST_PER_INSTALL_HOUR = 15;
 const LIMIT_DELETE_PER_INSTALL_HOUR = 10;
+const LIMIT_BOOTSTRAP_PER_IP_PER_MINUTE = 10;
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -19,6 +20,12 @@ export default {
 
     if (req.method === "GET" && path === "/health") {
       return json(200, { status: "ok" });
+    }
+
+    const ip = req.headers.get("CF-Connecting-IP") || "unknown";
+
+    if (req.method === "POST" && path === "/v1/bootstrap") {
+      return handleBootstrap(req, env, ip);
     }
 
     if (!path.startsWith("/v1/")) {
@@ -31,7 +38,6 @@ export default {
       return json(503, { error: "gateway_misconfigured" });
     }
 
-    const ip = req.headers.get("CF-Connecting-IP") || "unknown";
     const minute = Math.floor(Date.now() / 60_000);
     const ipOk = await incrementRateLimit(
       env.RATE_LIMITS,
@@ -126,6 +132,71 @@ export default {
     });
   },
 };
+
+async function handleBootstrap(req: Request, env: Env, ip: string): Promise<Response> {
+  const minute = Math.floor(Date.now() / 60_000);
+  const ok = await incrementRateLimit(
+    env.RATE_LIMITS,
+    `bootstrap_ip:${ip}:${minute}`,
+    LIMIT_BOOTSTRAP_PER_IP_PER_MINUTE,
+    120
+  );
+  if (!ok) {
+    return json(429, { error: "rate_limited" }, { "Retry-After": "60" });
+  }
+
+  const auth = req.headers.get("Authorization")?.trim() ?? "";
+  let token = "";
+  if (auth.toLowerCase().startsWith("bearer ")) {
+    token = auth.slice(7).trim();
+  }
+  if (!token) {
+    return json(401, { error: "unauthorized" });
+  }
+
+  const key = `bootstrap:${await sha256Hex(token)}`;
+  const raw = await env.INSTALL_SECRETS.get(key);
+  if (!raw) {
+    return json(401, { error: "invalid_bootstrap_token" });
+  }
+
+  let payload: {
+    provisioning_install_id?: string;
+    provisioning_install_secret?: string;
+    provisioning_base_url?: string;
+  };
+  try {
+    payload = JSON.parse(raw) as typeof payload;
+  } catch {
+    return json(500, { error: "bootstrap_misconfigured" });
+  }
+
+  const provisioning_install_id = (payload.provisioning_install_id ?? "").trim();
+  const provisioning_install_secret = (payload.provisioning_install_secret ?? "").trim();
+  let provisioning_base_url = (payload.provisioning_base_url ?? "").trim();
+  if (!provisioning_install_id || !provisioning_install_secret) {
+    return json(500, { error: "bootstrap_misconfigured" });
+  }
+  if (!provisioning_base_url) {
+    provisioning_base_url = "https://provision.hyperspeedapp.com";
+  }
+
+  await env.INSTALL_SECRETS.delete(key);
+
+  return json(200, {
+    provisioning_base_url: provisioning_base_url,
+    provisioning_install_id: provisioning_install_id,
+    provisioning_install_secret: provisioning_install_secret,
+  });
+}
+
+async function sha256Hex(s: string): Promise<string> {
+  const buf = new TextEncoder().encode(s);
+  const hash = await crypto.subtle.digest("SHA-256", buf);
+  return Array.from(new Uint8Array(hash))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
 
 function json(
   status: number,

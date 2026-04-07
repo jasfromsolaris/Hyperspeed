@@ -42,6 +42,12 @@ Wrangler loads operator secrets via `scripts/with-cp-env.mjs` from the first fil
 
    (Prefix `node scripts/with-cp-env.mjs --` if you need the API token on the `kv key put` command.)
 
+3b. **Bootstrap tokens (optional, one-time exchange):** The API can call `POST /v1/bootstrap` with `Authorization: Bearer <opaque_token>` instead of shipping install ID/secret in plain env. Store a KV entry keyed by `bootstrap:<sha256-hex-of-token>` where the value is JSON:
+
+   `{"provisioning_install_id":"...","provisioning_install_secret":"...","provisioning_base_url":"https://provision.hyperspeedapp.com"}`
+
+   (`provisioning_base_url` is optional; it defaults to the production gateway URL.) The key is **deleted** on successful exchange. Compute the hex digest of the token (SHA-256) when writing the key.
+
 4. **Deploy:**
 
    ```bash
