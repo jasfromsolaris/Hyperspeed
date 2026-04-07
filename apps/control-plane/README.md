@@ -16,12 +16,16 @@ Put **`CLOUDFLARE_API_TOKEN`** and **`CLOUDFLARE_ZONE_ID`** only here (env vars 
 | `PORT` | no | Used when `HTTP_ADDR` is unset (e.g. Render). |
 | `AUDIT_DB_PATH` | no | SQLite path for claim audit (default `./data/control-plane.sqlite`) |
 | `CLOUDFLARE_PROXIED` | no | Set `true` to orange-cloud records (usually `false` so customer terminates TLS) |
+| `WORKER_ADMIN_URL` | no | Worker origin for bootstrap token issuance (default `https://provision-gw.hyperspeedapp.com`) |
+| `WORKER_ADMIN_TOKEN` | no | Shared server-to-server token for Worker `POST /v1/admin/bootstrap-token` |
+| `PROVISIONING_BASE_URL` | no | Returned in bootstrap responses (default `https://provision-gw.hyperspeedapp.com`) |
 
 ## API
 
 - `GET /health` — no auth
 - `POST /v1/claims` — JSON `{"slug":"acme","ipv4":"203.0.113.10"}` with Bearer auth
 - `DELETE /v1/claims/{slug}` — remove DNS record (Bearer auth)
+- `POST /v1/installs/bootstrap-token` — issues one-time bootstrap token for customer API auto-bootstrap (Bearer auth)
 
 ## Run locally
 

@@ -26,6 +26,7 @@ Wrangler loads operator secrets via `scripts/with-cp-env.mjs` from the first fil
 
    - `WORKER_CONTROL_PLANE_URL` — URL the Worker will `fetch` (no trailing slash).
    - `CONTROL_PLANE_BEARER_TOKEN` must match the control plane.
+   - `WORKER_ADMIN_TOKEN` — server-to-server token for issuing one-time bootstrap tokens.
 
    Then:
 
@@ -47,6 +48,11 @@ Wrangler loads operator secrets via `scripts/with-cp-env.mjs` from the first fil
    `{"provisioning_install_id":"...","provisioning_install_secret":"...","provisioning_base_url":"https://provision-gw.hyperspeedapp.com"}`
 
    (`provisioning_base_url` is optional; it defaults to the production gateway URL.) The key is **deleted** on successful exchange. Compute the hex digest of the token (SHA-256) when writing the key.
+
+3c. **Automatic issuance (recommended):** Instead of writing KV records manually, call Worker admin endpoint `POST /v1/admin/bootstrap-token` with `Authorization: Bearer ${WORKER_ADMIN_TOKEN}`. Response includes:
+   - `provisioning_install_id`
+   - `provisioning_bootstrap_token` (single-use)
+   - `provisioning_base_url`
 
 4. **Deploy:**
 

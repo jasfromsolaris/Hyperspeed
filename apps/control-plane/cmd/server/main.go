@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -62,6 +64,7 @@ func main() {
 		r.Use(bearerAuth(cfg.BearerToken))
 		r.Post("/claims", handleClaim(&cfg, cfClient, auditStore))
 		r.Delete("/claims/{slug}", handleDelete(&cfg, cfClient, auditStore))
+		r.Post("/installs/bootstrap-token", handleIssueBootstrapToken(&cfg))
 	})
 
 	addr := cfg.HTTPAddr
@@ -91,6 +94,20 @@ func bearerAuth(want string) func(http.Handler) http.Handler {
 type claimBody struct {
 	Slug string `json:"slug"`
 	IPv4 string `json:"ipv4"`
+}
+
+type issueBootstrapTokenRequest struct {
+	// Optional stable install id; if empty, Worker creates one.
+	InstallID string `json:"install_id"`
+	// Optional token TTL in seconds (min 60, max 3600 in worker).
+	TTLSeconds int `json:"ttl_sec"`
+}
+
+type issueBootstrapTokenResponse struct {
+	ProvisioningBaseURL       string `json:"provisioning_base_url"`
+	ProvisioningInstallID     string `json:"provisioning_install_id"`
+	ProvisioningBootstrapToken string `json:"provisioning_bootstrap_token"`
+	ExpiresInSec              int    `json:"expires_in_sec"`
 }
 
 func handleClaim(cfg *config.Config, client *cf.Client, store *audit.Store) http.HandlerFunc {
@@ -170,6 +187,69 @@ func handleDelete(cfg *config.Config, client *cf.Client, store *audit.Store) htt
 		}
 		_ = store.DeleteClaim(ctx, slug)
 		w.WriteHeader(http.StatusNoContent)
+	}
+}
+
+func handleIssueBootstrapToken(cfg *config.Config) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if strings.TrimSpace(cfg.WorkerAdminToken) == "" || strings.TrimSpace(cfg.WorkerAdminURL) == "" {
+			writeErr(w, http.StatusServiceUnavailable, "bootstrap_unavailable")
+			return
+		}
+		var body issueBootstrapTokenRequest
+		_ = json.NewDecoder(r.Body).Decode(&body)
+
+		reqBody, _ := json.Marshal(map[string]any{
+			"install_id": strings.TrimSpace(body.InstallID),
+			"ttl_sec":    body.TTLSeconds,
+		})
+		url := strings.TrimSuffix(cfg.WorkerAdminURL, "/") + "/v1/admin/bootstrap-token"
+		req, err := http.NewRequestWithContext(r.Context(), http.MethodPost, url, bytes.NewReader(reqBody))
+		if err != nil {
+			writeErr(w, http.StatusInternalServerError, "bootstrap_request_failed")
+			return
+		}
+		req.Header.Set("Authorization", "Bearer "+cfg.WorkerAdminToken)
+		req.Header.Set("Content-Type", "application/json")
+
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			slog.Error("worker bootstrap issue", "err", err)
+			writeErr(w, http.StatusBadGateway, "bootstrap_request_failed")
+			return
+		}
+		defer resp.Body.Close()
+		raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			slog.Error("worker bootstrap issue", "status", resp.StatusCode, "body", string(raw))
+			writeErr(w, http.StatusBadGateway, "bootstrap_request_failed")
+			return
+		}
+
+		var out issueBootstrapTokenResponse
+		if err := json.Unmarshal(raw, &out); err != nil {
+			writeErr(w, http.StatusBadGateway, "bootstrap_request_failed")
+			return
+		}
+		if out.ProvisioningBaseURL == "" {
+			out.ProvisioningBaseURL = strings.TrimSpace(cfg.ProvisioningBaseURL)
+		}
+		if out.ProvisioningBaseURL == "" {
+			out.ProvisioningBaseURL = "https://provision-gw.hyperspeedapp.com"
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"provisioning_base_url":        out.ProvisioningBaseURL,
+			"provisioning_install_id":      out.ProvisioningInstallID,
+			"provisioning_bootstrap_token": out.ProvisioningBootstrapToken,
+			"expires_in_sec":               out.ExpiresInSec,
+			"compose_env": map[string]string{
+				"PROVISIONING_BASE_URL":        out.ProvisioningBaseURL,
+				"PROVISIONING_BOOTSTRAP_TOKEN": out.ProvisioningBootstrapToken,
+			},
+		})
 	}
 }
 
