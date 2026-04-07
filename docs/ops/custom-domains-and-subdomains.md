@@ -28,7 +28,7 @@ The SPA is designed to call `/api/...` on the **same origin** when built without
    Terminate HTTPS on the customer’s edge (Caddy, Traefik, or nginx) with a valid certificate (Let’s Encrypt HTTP-01 or DNS-01 is typical).
 
 3. **Reverse proxy**  
-   Route `/api` (including WebSocket upgrades) to the API service and serve the static web UI on `/`. The repository [Caddyfile](../../Caddyfile) shows a minimal **HTTP** example on `:80` for local Compose; **production** should use a real hostname block with HTTPS, for example:
+   Route `/api` (including WebSocket upgrades) to the API service and serve the static web UI on `/`. The repository [Caddyfile](../../Caddyfile) uses an **`http://`** site block (any Host) on container port **80**; default compose maps host **18080** → **80**. **Production** with automatic TLS at your app often uses a reverse proxy or a hostname block, for example:
 
    ```caddy
    app.customer.com {

@@ -1,49 +1,31 @@
 # Hyperspeed — self-hosted Docker
 
-This stack runs Postgres, Redis, MinIO, the Go API, and the static web UI. **Caddy** is the public entrypoint; by default it maps host **80** and **443** to the container (override with **`CADDY_HTTP_PORT`** / **`CADDY_HTTPS_PORT`** in `.env` if those host ports are already taken). Caddy proxies `/api` to the API and everything else to the web container (same-origin `/api/...` from the browser).
+This stack runs Postgres, Redis, MinIO, the Go API, and the static web UI. **Caddy** listens on **HTTP** inside the container. The default compose file maps **host port `18080` → container `80`** so a **first deploy does not need host 80/443** (often already taken on shared hosting). The [`Caddyfile`](Caddyfile) uses an `http://` site block so **any Host** works (localhost, server IP, or a hostname) without extra configuration.
 
-**Important:** Run Compose from the **repository root**—the folder that contains `docker-compose.yml`, `Caddyfile`, `Dockerfile.caddy`, and `apps/`. The API and web images are **built** from `./apps/api` and `./apps/web`; **Caddy** is built from [`Dockerfile.caddy`](Dockerfile.caddy), which copies `Caddyfile` into the image (no host bind mount—works on hosts where bind mounts misbehave). After editing `Caddyfile`, rebuild Caddy: `docker compose up -d --build caddy`.
+**Important:** Run Compose from the **repository root**—the folder that contains `docker-compose.yml`, `Caddyfile`, `Dockerfile.caddy`, and `apps/`. The API and web images are **built** from `./apps/api` and `./apps/web`; **Caddy** is built from [`Dockerfile.caddy`](Dockerfile.caddy). After editing `Caddyfile`, rebuild: `docker compose up -d --build caddy`.
 
 ## Prerequisites
 
 - Docker and Docker Compose v2 (supports `depends_on` health conditions used in `docker-compose.yml`)
 
-## Quick start (local Docker)
+## First run (no `.env` required)
 
-1. Copy `.env.example` to `.env` and set **`JWT_SECRET`** to a long random string (at least 32 characters). For the default local stack, set **`CORS_ORIGIN=http://localhost`** so it matches how you open the app (see below).
+From the **repository root**:
 
-2. From the **repository root**:
+```bash
+docker compose up --build
+```
 
-   ```bash
-   docker compose up --build
-   ```
+Open **[http://localhost:18080](http://localhost:18080)** (or **`http://YOUR_SERVER_IP:18080`**). Defaults include **`DEBUG=1`** (permissive CORS for getting started) and placeholder secrets—**before real production use**, copy `.env.example` to `.env`, set a strong **`JWT_SECRET`**, **`HS_SSH_ENCRYPTION_KEY`**, set **`DEBUG=0`**, and set **`CORS_ORIGIN`** / **`PUBLIC_API_BASE_URL`** to your real public HTTPS origin.
 
-3. Open the app at **[http://localhost](http://localhost)** (default host port **80**, or **`http://localhost:8880`** if you set `CADDY_HTTP_PORT=8880`). **Caddy** serves the site; with default **`CADDY_PUBLIC_HOST=localhost`** this is **HTTP only** (no TLS). The API is **not** published on the host by default—it is only reachable as **`/api/...` through Caddy** (same origin). If you use a non-default HTTP port, set **`CORS_ORIGIN`** to the same origin (e.g. `http://localhost:8880`). To hit the API process directly from the host (rare), add `ports: ["8080:8080"]` under `api` in a `docker-compose.override.yml` or temporarily edit `docker-compose.yml`.
+**Register** opens the **setup wizard** when the database has no organization yet. Realtime uses WebSockets under `/api/...` (proxied by Caddy).
 
-4. **Register** opens the **setup wizard** when the database has no organization yet: you create the **singleton workspace** (org) as the first admin in one flow (name, email, password, workspace name, then hostname / go-live notes). After that, add a space (project) and use the board. If an org already exists, **Register** only requests access (pending admin approval when open sign-ups are enabled) or use an **invite** — you do not create another workspace from the dashboard. Realtime uses WebSockets under `/api/...` (proxied by Caddy like normal HTTP).
+## VPS, cloud, or hosting panel (paste GitHub URL)
 
-## VPS, cloud, or hosting panel (Docker)
-
-Use this path when you deploy the same `docker-compose.yml` on a server (e.g. Hostinger Docker, a VPS, or any host that runs Compose from a git clone).
-
-1. **Full repository** — Clone or upload the **entire** project (not only `docker-compose.yml`). The build context must include `apps/api` and `apps/web`.
-
-2. **Working directory** — Run commands from the **root** that contains `docker-compose.yml` (the same place as `.env`).
-
-3. **Command** — `docker compose up --build` (or your panel’s equivalent that runs the same file from that root).
-
-4. **Ports** — Compose publishes **80** and **443** (Caddy) only. The API listens on **8080 inside the stack**; Caddy proxies to it. Your host or panel must allow binding **80/443** for HTTPS; if the panel already uses those ports, you will need a different mapping or their reverse-proxy docs.
-
-5. **Production `.env` minimum** (in addition to `JWT_SECRET` and `HS_SSH_ENCRYPTION_KEY` from `.env.example`):
-
-   | Variable | Role |
-   |----------|------|
-   | `CADDY_PUBLIC_HOST` | Hostname only (e.g. `app.example.com`). **No** `https://`. Caddy uses this for the site block and Let’s Encrypt. |
-   | `CADDY_EMAIL` | Email for Let’s Encrypt registration. |
-   | `CORS_ORIGIN` | Exact browser origin, e.g. `https://app.example.com` (scheme + host, port only if non-default). |
-   | `PUBLIC_API_BASE_URL` | Same public origin as users type in the bar (needed for features that emit absolute API URLs, e.g. IDE preview). |
-
-   Point **DNS** for `CADDY_PUBLIC_HOST` at this server so Let’s Encrypt HTTP-01 can succeed on port **80**.
+1. **Full repository** — The panel must clone or copy the **entire** repo (build contexts are `./apps/api` and `./apps/web`).
+2. **Root directory** — The same folder as `docker-compose.yml`.
+3. **No environment variables required** for the stack to start; default **HTTP on the host is port `18080`**. If that port is taken, set **`CADDY_HTTP_PORT`** in `.env` to another free port.
+4. **HTTPS** — The stock `Caddyfile` serves **HTTP** only. Put a reverse proxy or load balancer in front for TLS, or replace the `http://` block with a hostname + TLS (see [custom domains](docs/ops/custom-domains-and-subdomains.md)).
 
 ### Workspace limit (one organization per database)
 
@@ -55,13 +37,14 @@ The open-source stack allows **at most one organization** in the database. The *
 |----------|------|
 | `JWT_SECRET` | HMAC key for access tokens (required in production) |
 | `HS_SSH_ENCRYPTION_KEY` | Base64, 32 bytes—required if you use Terminal SSH storage (see `.env.example`) |
-| `CORS_ORIGIN` | Browser origin allowed for API calls. **Docker + Caddy:** use `http://localhost` locally, or your real `https://…` origin in production. **Local Vite:** e.g. `http://localhost:5173` |
+| `DEBUG` | Default `1` for first deploy; set **`0`** in production and tighten CORS. |
+| `CORS_ORIGIN` | Default `http://localhost:18080` in compose. When **`DEBUG=0`**, must match the **exact** browser origin (scheme + host + port). **Local Vite:** e.g. `http://localhost:5173` |
 | `PUBLIC_APP_URL` | Optional. Public HTTPS URL hint during onboarding (e.g. `https://hyperspeed.example.com`) |
 | `PUBLIC_API_BASE_URL` | Same scheme+host users use in the browser when the API must emit absolute URLs (see [custom domains doc](docs/ops/custom-domains-and-subdomains.md)) |
-| `CADDY_PUBLIC_HOST` | Hostname for Caddy’s site block (`localhost` = HTTP on :80 only; real FQDN = HTTPS via Let’s Encrypt) |
-| `CADDY_EMAIL` | Let’s Encrypt account email when using a real hostname |
+| `CADDY_HTTP_PORT` | Host port mapped to Caddy’s **80** (default **18080**). |
+| `CADDY_EMAIL` | Used by Caddy global config; relevant if you add TLS site blocks later |
 
-With Docker, the web image is built with **`VITE_API_URL` empty**; the SPA calls **`/api/...` on the same origin** as the page (via Caddy), so **`CORS_ORIGIN` must match** that origin (e.g. `https://app.example.com` in production).
+With Docker, the web image is built with **`VITE_API_URL` empty**; the SPA calls **`/api/...` on the same origin** as the page (via Caddy). When **`DEBUG=0`**, **`CORS_ORIGIN`** must match that origin.
 
 ### Hyperspeed-hosted subdomain (optional)
 
@@ -101,4 +84,4 @@ See **[docs/ops/custom-domains-and-subdomains.md](docs/ops/custom-domains-and-su
 
 ## Smoke check
 
-With the stack up, **`GET /health`** through Caddy (e.g. `curl -s http://localhost/health`, or `http://localhost:8880/health` if `CADDY_HTTP_PORT=8880`) should return JSON including `"status":"ok"`, plus `version` and `git_sha` when the binary was built with those ldflags (see `apps/api/Dockerfile`).
+With the stack up, **`GET /health`** through Caddy (e.g. `curl -s http://localhost:18080/health`) should return JSON including `"status":"ok"`, plus `version` and `git_sha` when the binary was built with those ldflags (see `apps/api/Dockerfile`).
