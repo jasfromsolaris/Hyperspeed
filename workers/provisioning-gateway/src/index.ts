@@ -5,6 +5,7 @@ export interface Env {
   RATE_LIMITS: KVNamespace;
   CONTROL_PLANE_URL: string;
   CONTROL_PLANE_BEARER_TOKEN: string;
+  WORKER_ADMIN_TOKEN?: string;
 }
 
 const MAX_SKEW_SEC = 300;
@@ -12,6 +13,7 @@ const LIMIT_IP_PER_MINUTE = 60;
 const LIMIT_POST_PER_INSTALL_HOUR = 15;
 const LIMIT_DELETE_PER_INSTALL_HOUR = 10;
 const LIMIT_BOOTSTRAP_PER_IP_PER_MINUTE = 10;
+const LIMIT_ADMIN_BOOTSTRAP_PER_MINUTE = 120;
 
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -26,6 +28,9 @@ export default {
 
     if (req.method === "POST" && path === "/v1/bootstrap") {
       return handleBootstrap(req, env, ip);
+    }
+    if (req.method === "POST" && path === "/v1/admin/bootstrap-token") {
+      return handleAdminBootstrapIssue(req, env, ip);
     }
 
     if (!path.startsWith("/v1/")) {
@@ -190,12 +195,78 @@ async function handleBootstrap(req: Request, env: Env, ip: string): Promise<Resp
   });
 }
 
+async function handleAdminBootstrapIssue(req: Request, env: Env, ip: string): Promise<Response> {
+  const minute = Math.floor(Date.now() / 60_000);
+  const ipOk = await incrementRateLimit(
+    env.RATE_LIMITS,
+    `admin_bootstrap_ip:${ip}:${minute}`,
+    LIMIT_ADMIN_BOOTSTRAP_PER_MINUTE,
+    120
+  );
+  if (!ipOk) {
+    return json(429, { error: "rate_limited" }, { "Retry-After": "60" });
+  }
+
+  const want = (env.WORKER_ADMIN_TOKEN || "").trim();
+  if (!want) {
+    return json(503, { error: "admin_unconfigured" });
+  }
+  const auth = req.headers.get("Authorization")?.trim() ?? "";
+  const got = auth.toLowerCase().startsWith("bearer ") ? auth.slice(7).trim() : "";
+  if (!got || got !== want) {
+    return json(401, { error: "unauthorized" });
+  }
+
+  let body: { install_id?: string; ttl_sec?: number } = {};
+  try {
+    body = (await req.json()) as typeof body;
+  } catch {
+    // empty body allowed
+  }
+
+  const installId = (body.install_id ?? "").trim() || crypto.randomUUID();
+  const ttlSecRaw = Number(body.ttl_sec ?? 900);
+  const ttlSec = Number.isFinite(ttlSecRaw)
+    ? Math.max(60, Math.min(3600, Math.floor(ttlSecRaw)))
+    : 900;
+
+  const installSecret = randomToken(48);
+  const bootstrapToken = randomToken(40);
+  const bootstrapKey = `bootstrap:${await sha256Hex(bootstrapToken)}`;
+
+  await env.INSTALL_SECRETS.put(`install:${installId}`, installSecret);
+  await env.INSTALL_SECRETS.put(
+    bootstrapKey,
+    JSON.stringify({
+      provisioning_install_id: installId,
+      provisioning_install_secret: installSecret,
+      provisioning_base_url: "https://provision-gw.hyperspeedapp.com",
+    }),
+    { expirationTtl: ttlSec }
+  );
+
+  return json(200, {
+    provisioning_base_url: "https://provision-gw.hyperspeedapp.com",
+    provisioning_install_id: installId,
+    provisioning_bootstrap_token: bootstrapToken,
+    expires_in_sec: ttlSec,
+  });
+}
+
 async function sha256Hex(s: string): Promise<string> {
   const buf = new TextEncoder().encode(s);
   const hash = await crypto.subtle.digest("SHA-256", buf);
   return Array.from(new Uint8Array(hash))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+}
+
+function randomToken(bytes: number): string {
+  const arr = new Uint8Array(bytes);
+  crypto.getRandomValues(arr);
+  let b64 = btoa(String.fromCharCode(...arr));
+  b64 = b64.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+  return b64;
 }
 
 function json(
