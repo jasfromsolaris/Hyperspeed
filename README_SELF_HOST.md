@@ -1,6 +1,6 @@
 # Hyperspeed — self-hosted Docker
 
-This stack runs Postgres, Redis, MinIO, the Go API, and the static web UI. **Caddy** is the public entrypoint on **ports 80 and 443**; it proxies `/api` to the API and everything else to the web container (same-origin `/api/...` from the browser).
+This stack runs Postgres, Redis, MinIO, the Go API, and the static web UI. **Caddy** is the public entrypoint; by default it maps host **80** and **443** to the container (override with **`CADDY_HTTP_PORT`** / **`CADDY_HTTPS_PORT`** in `.env` if those host ports are already taken). Caddy proxies `/api` to the API and everything else to the web container (same-origin `/api/...` from the browser).
 
 **Important:** Run Compose from the **repository root**—the folder that contains `docker-compose.yml`, `Caddyfile`, `Dockerfile.caddy`, and `apps/`. The API and web images are **built** from `./apps/api` and `./apps/web`; **Caddy** is built from [`Dockerfile.caddy`](Dockerfile.caddy), which copies `Caddyfile` into the image (no host bind mount—works on hosts where bind mounts misbehave). After editing `Caddyfile`, rebuild Caddy: `docker compose up -d --build caddy`.
 
@@ -18,7 +18,7 @@ This stack runs Postgres, Redis, MinIO, the Go API, and the static web UI. **Cad
    docker compose up --build
    ```
 
-3. Open the app at **[http://localhost](http://localhost)** (port **80**). **Caddy** serves the site; with default **`CADDY_PUBLIC_HOST=localhost`** this is **HTTP only** (no TLS). The API is **not** published on the host by default—it is only reachable as **`/api/...` through Caddy** (same origin). To hit the API process directly from the host (rare), add `ports: ["8080:8080"]` under `api` in a `docker-compose.override.yml` or temporarily edit `docker-compose.yml`.
+3. Open the app at **[http://localhost](http://localhost)** (default host port **80**, or **`http://localhost:8880`** if you set `CADDY_HTTP_PORT=8880`). **Caddy** serves the site; with default **`CADDY_PUBLIC_HOST=localhost`** this is **HTTP only** (no TLS). The API is **not** published on the host by default—it is only reachable as **`/api/...` through Caddy** (same origin). If you use a non-default HTTP port, set **`CORS_ORIGIN`** to the same origin (e.g. `http://localhost:8880`). To hit the API process directly from the host (rare), add `ports: ["8080:8080"]` under `api` in a `docker-compose.override.yml` or temporarily edit `docker-compose.yml`.
 
 4. **Register** opens the **setup wizard** when the database has no organization yet: you create the **singleton workspace** (org) as the first admin in one flow (name, email, password, workspace name, then hostname / go-live notes). After that, add a space (project) and use the board. If an org already exists, **Register** only requests access (pending admin approval when open sign-ups are enabled) or use an **invite** — you do not create another workspace from the dashboard. Realtime uses WebSockets under `/api/...` (proxied by Caddy like normal HTTP).
 
@@ -101,4 +101,4 @@ See **[docs/ops/custom-domains-and-subdomains.md](docs/ops/custom-domains-and-su
 
 ## Smoke check
 
-With the stack up, **`GET /health`** through Caddy (e.g. `curl -s http://localhost/health` when using default localhost) should return JSON including `"status":"ok"`, plus `version` and `git_sha` when the binary was built with those ldflags (see `apps/api/Dockerfile`).
+With the stack up, **`GET /health`** through Caddy (e.g. `curl -s http://localhost/health`, or `http://localhost:8880/health` if `CADDY_HTTP_PORT=8880`) should return JSON including `"status":"ok"`, plus `version` and `git_sha` when the binary was built with those ldflags (see `apps/api/Dockerfile`).
