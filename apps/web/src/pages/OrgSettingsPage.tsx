@@ -483,21 +483,16 @@ export default function OrgSettingsPage() {
                       ) : null}
                     </>
                   ) : (
-                    <div className="rounded-sm border border-dashed border-border bg-muted/25 p-3 text-xs leading-relaxed text-muted-foreground">
+                    <div className="rounded-sm border border-border bg-muted/20 p-3 text-xs leading-relaxed text-muted-foreground">
                       <p className="text-foreground">
-                        Automatic DNS isn&apos;t available on this server, so you only see{" "}
-                        <strong className="font-medium text-foreground">Save URL</strong>—not{" "}
-                        <strong className="font-medium text-foreground">Save URL &amp; DNS</strong>.
+                        <strong className="font-medium text-foreground">Hyperspeed-hosted DNS</strong>{" "}
+                        (one-step <strong className="font-medium text-foreground">Save URL &amp; DNS</strong>)
+                        appears when this server is linked to Hyperspeed&apos;s provisioning service.
+                        Until then you only need <strong className="font-medium text-foreground">Save URL</strong>.
                       </p>
                       <p className="mt-2">
-                        That&apos;s normal for local or self-hosted setups until an administrator
-                        connects this server to Hyperspeed&apos;s DNS service. You can still save
-                        your team URL here and add DNS at your domain provider yourself.
-                      </p>
-                      <p className="mt-2 font-mono text-[11px] text-muted-foreground">
-                        Operators: set PROVISIONING_BASE_URL, PROVISIONING_INSTALL_ID, and
-                        PROVISIONING_INSTALL_SECRET, then reload
-                        this page.
+                        You can still save your team URL here. For your own domain, add DNS at your
+                        provider; reload this page after your host finishes linking the install.
                       </p>
                     </div>
                   )}
