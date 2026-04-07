@@ -18,7 +18,7 @@ This stack runs Postgres, Redis, MinIO, the Go API, and the static web UI. **Cad
    docker compose up --build
    ```
 
-3. Open the app at **[http://localhost](http://localhost)** (port **80**). **Caddy** serves the site; with default **`CADDY_PUBLIC_HOST=localhost`** this is **HTTP only** (no TLS). The API is also exposed on the host at **[http://localhost:8080](http://localhost:8080)** for debugging—normally you use the UI through Caddy on **80** so `/api` and the SPA share one origin.
+3. Open the app at **[http://localhost](http://localhost)** (port **80**). **Caddy** serves the site; with default **`CADDY_PUBLIC_HOST=localhost`** this is **HTTP only** (no TLS). The API is **not** published on the host by default—it is only reachable as **`/api/...` through Caddy** (same origin). To hit the API process directly from the host (rare), add `ports: ["8080:8080"]` under `api` in a `docker-compose.override.yml` or temporarily edit `docker-compose.yml`.
 
 4. **Register** opens the **setup wizard** when the database has no organization yet: you create the **singleton workspace** (org) as the first admin in one flow (name, email, password, workspace name, then hostname / go-live notes). After that, add a space (project) and use the board. If an org already exists, **Register** only requests access (pending admin approval when open sign-ups are enabled) or use an **invite** — you do not create another workspace from the dashboard. Realtime uses WebSockets under `/api/...` (proxied by Caddy like normal HTTP).
 
@@ -32,7 +32,7 @@ Use this path when you deploy the same `docker-compose.yml` on a server (e.g. Ho
 
 3. **Command** — `docker compose up --build` (or your panel’s equivalent that runs the same file from that root).
 
-4. **Ports** — Compose publishes **80** and **443** (Caddy) and **8080** (API). Your host or panel must allow binding **80/443** if users reach the app on standard HTTPS; if the panel already uses those ports, you will need a different port mapping or their reverse-proxy docs.
+4. **Ports** — Compose publishes **80** and **443** (Caddy) only. The API listens on **8080 inside the stack**; Caddy proxies to it. Your host or panel must allow binding **80/443** for HTTPS; if the panel already uses those ports, you will need a different mapping or their reverse-proxy docs.
 
 5. **Production `.env` minimum** (in addition to `JWT_SECRET` and `HS_SSH_ENCRYPTION_KEY` from `.env.example`):
 
@@ -101,4 +101,4 @@ See **[docs/ops/custom-domains-and-subdomains.md](docs/ops/custom-domains-and-su
 
 ## Smoke check
 
-With the API up, `GET /health` should return JSON including `"status":"ok"`, plus `version` and `git_sha` when the binary was built with those ldflags (see `apps/api/Dockerfile`).
+With the stack up, **`GET /health`** through Caddy (e.g. `curl -s http://localhost/health` when using default localhost) should return JSON including `"status":"ok"`, plus `version` and `git_sha` when the binary was built with those ldflags (see `apps/api/Dockerfile`).
