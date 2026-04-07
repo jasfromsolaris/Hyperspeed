@@ -67,18 +67,9 @@ The SPA is designed to call `/api/...` on the **same origin** when built without
 - **Cloudflare API tokens** for the `hyperspeedapp.com` zone must live **only** on infrastructure Hyperspeed operates: the **control-plane** service (see below). They **must not** appear in customer `.env` for the open-source stack.
 - The **control-plane bearer token** must not appear in customer `.env` either. Hyperspeed runs a **provisioning gateway** (Cloudflare Worker) that holds that bearer and talks to the private control plane. The self-hosted API uses **`PROVISIONING_INSTALL_ID`** + **`PROVISIONING_INSTALL_SECRET`** to sign requests to the gateway (scoped to that install).
 
-### Provisioning gateway (`workers/provisioning-gateway`)
+### Provisioning service (operated by Hyperspeed)
 
-Hyperspeed deploys a **Worker** that validates install HMAC headers, applies rate limits, looks up the install secret in **KV**, and proxies `POST /v1/claims` and `DELETE /v1/claims/{slug}` to the private control plane using `CONTROL_PLANE_BEARER_TOKEN`. See [`workers/provisioning-gateway/README.md`](../../workers/provisioning-gateway/README.md).
-
-### Control plane (`apps/control-plane`)
-
-The repository includes a small **control-plane** service (Go) that Hyperspeed deploys separately (for example Fly.io, Railway, or a VM). It holds `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ZONE_ID`, upserts **A** records for `{slug}.{BASE_DOMAIN}`, writes an SQLite audit log, and authenticates **only the Worker** (or other private callers) with a static bearer token.
-
-- **Endpoints:** `POST /v1/claims` (body: `slug`, `ipv4`), `DELETE /v1/claims/{slug}` (revoke), `GET /health`.
-- **Not** included in `docker-compose.yml` for end-user self-host; operators who need gifted subdomains run it alongside Hyperspeed-operated DNS.
-
-See [`apps/control-plane/README.md`](../../apps/control-plane/README.md) for environment variables and run instructions.
+Hyperspeed runs the provisioning gateway and private control plane outside this OSS repository. They validate install credentials, apply rate limits, and perform DNS changes for gifted subdomains.
 
 ### OSS API integration
 
@@ -96,13 +87,10 @@ See [README_SELF_HOST.md](../../README_SELF_HOST.md).
 
 If provisioning is **not** configured, use a **manual or internal** process: customer requests a subdomain; operator verifies IP and slug, creates the **A** record, and points them to this document for TLS and env vars. The technical steps match the automated path once DNS exists.
 
-### What stays out of the OSS repo (conceptual)
+### What stays out of the OSS repo
 
-- **Wildcard** `*.hyperspeedapp.com` is optional for operations. A single hostname with a per-host certificate on the customer edge is enough.
-
-### Future work (security)
-
-Verify the customer controls the claimed IP (e.g. HTTP challenge, short-lived proof) to reduce **subdomain takeover** risk. Not required for the first iteration of automation.
+- Provisioning gateway and control-plane implementation details.
+- Cloudflare API credentials and control-plane bearer credentials.
 
 ---
 

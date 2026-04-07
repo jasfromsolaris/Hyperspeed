@@ -5,8 +5,7 @@ import (
 	"strings"
 )
 
-// DefaultProvisioningGatewayURL is the production Cloudflare Worker origin (no trailing path).
-// Must match workers/provisioning-gateway wrangler route (provision-gw.hyperspeedapp.com).
+// DefaultProvisioningGatewayURL is the production provisioning gateway origin (no trailing path).
 const DefaultProvisioningGatewayURL = "https://provision-gw.hyperspeedapp.com"
 
 const (
