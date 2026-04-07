@@ -52,7 +52,7 @@ If Hyperspeed operates DNS for **`*.hyperspeedapp.com`**, Hyperspeed runs a **pr
 
 | Variable | Role |
 |----------|------|
-| `PROVISIONING_BASE_URL` | HTTPS origin of the gateway (no path), e.g. `https://provision.hyperspeedapp.com` |
+| `PROVISIONING_BASE_URL` | HTTPS origin of the gateway (no path), e.g. `https://provision-gw.hyperspeedapp.com` |
 | `PROVISIONING_INSTALL_ID` | Install identifier; Hyperspeed stores the matching secret on the gateway |
 | `PROVISIONING_INSTALL_SECRET` | Shared secret used to sign requests to the gateway (not the control-plane bearer) |
 

@@ -6,7 +6,8 @@ import (
 )
 
 // DefaultProvisioningGatewayURL is the production Cloudflare Worker origin (no trailing path).
-const DefaultProvisioningGatewayURL = "https://provision.hyperspeedapp.com"
+// Must match workers/provisioning-gateway wrangler route (provision-gw.hyperspeedapp.com).
+const DefaultProvisioningGatewayURL = "https://provision-gw.hyperspeedapp.com"
 
 const (
 	defaultProvisioningInstallSecretPath = "/run/secrets/provisioning_install_secret"

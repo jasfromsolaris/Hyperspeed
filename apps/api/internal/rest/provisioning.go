@@ -24,7 +24,7 @@ import (
 // (Cloudflare Worker), which authenticates install HMAC and proxies to the private control plane.
 type ProvisionHandler struct {
 	Store         *store.Store
-	BaseURL       string // public gateway origin, e.g. https://provision.hyperspeedapp.com (no trailing path)
+	BaseURL       string // public gateway origin, e.g. https://provision-gw.hyperspeedapp.com (no trailing path)
 	InstallID     string
 	InstallSecret string
 	HTTPClient    *http.Client
