@@ -1,6 +1,9 @@
 services:
   caddy:
-    image: caddy:2-alpine
+    build:
+      context: .
+      dockerfile: Dockerfile.caddy
+    image: hyperspeed-caddy:local
     ports:
       - "80:80"
       - "443:443"
@@ -10,7 +13,6 @@ services:
       # Let's Encrypt account email (override in .env for real deployments).
       CADDY_EMAIL: ${CADDY_EMAIL:-postmaster@example.com}
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy_data:/data
       - caddy_config:/config
     depends_on:
@@ -80,7 +82,7 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost}
       # Same public origin as the browser (scheme + host; no path). Set when using HTTPS team URL.
       PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-}
-      # Optional: Hyperspeed gifted DNS via provisioning gateway (README_SELF_HOST.md)
+      # Optional: Hyperspeed gifted DNS via provisioning gateway (see README_SELF_HOST.md)
       PROVISIONING_BASE_URL: ${PROVISIONING_BASE_URL:-}
       PROVISIONING_INSTALL_ID: ${PROVISIONING_INSTALL_ID:-}
       PROVISIONING_INSTALL_SECRET: ${PROVISIONING_INSTALL_SECRET:-}

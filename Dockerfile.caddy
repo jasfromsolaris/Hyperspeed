@@ -1,0 +1,4 @@
+# Bake Caddyfile into the image so `docker compose` does not rely on a host bind mount
+# (some hosting panels create a directory when the mount source is missing).
+FROM caddy:2-alpine
+COPY Caddyfile /etc/caddy/Caddyfile
