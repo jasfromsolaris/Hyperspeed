@@ -16,7 +16,7 @@ From the **repository root**:
 docker compose up --build
 ```
 
-Open **[http://localhost:18080](http://localhost:18080)** (or **`http://YOUR_SERVER_IP:18080`**). Defaults include **`DEBUG=1`** (permissive CORS for getting started) and placeholder secrets—**before real production use**, copy `.env.example` to `.env`, set a strong **`JWT_SECRET`**, **`HS_SSH_ENCRYPTION_KEY`**, set **`DEBUG=0`**, and set **`CORS_ORIGIN`** / **`PUBLIC_API_BASE_URL`** to your real public HTTPS origin.
+Open **[http://localhost:18080](http://localhost:18080)** (or **`http://YOUR_SERVER_IP:18080`**). Defaults include **`DEBUG=1`** (permissive CORS for getting started) and placeholder secrets—**before real production use**, copy **`deploy.env`** to **`.env`** (or start from **`deploy.env`** and edit), set a strong **`JWT_SECRET`**, **`HS_SSH_ENCRYPTION_KEY`**, set **`DEBUG=0`**, and set **`CORS_ORIGIN`** / **`PUBLIC_API_BASE_URL`** to your real public HTTPS origin.
 
 **Register** opens the **setup wizard** when the database has no organization yet. Realtime uses WebSockets under `/api/...` (proxied by Caddy).
 
@@ -27,12 +27,12 @@ Open **[http://localhost:18080](http://localhost:18080)** (or **`http://YOUR_SER
 3. **No environment variables required** for the stack to start; default **HTTP on the host is port `18080`**. If that port is taken, set **`CADDY_HTTP_PORT`** in `.env` to another free port.
 4. **HTTPS** — The stock `Caddyfile` serves **HTTP** only. Put a reverse proxy or load balancer in front for TLS, or replace the `http://` block with a hostname + TLS (see [custom domains](docs/ops/custom-domains-and-subdomains.md)).
 
-### Hostinger one-click env import
+### Hosting panel env import (no `#` lines)
 
-Use [`hostinger.env`](hostinger.env) for panel import. It contains only `KEY=value` lines (no comments), which avoids panels that misparse commented `.env.example` lines.
+Use [`deploy.env`](deploy.env) for import into Docker Manager / panel env UIs. It contains only `KEY=value` lines (no comments), so the panel does not create bogus keys like `# PROVISIONING_BASE_URL`.
 
-- Import `hostinger.env` in the Docker Manager env UI.
-- Do not paste `.env.example` into panel env fields.
+- Import or paste from `deploy.env` (not `.env.example`, which uses `#` comments for developers).
+- Locally, copy `deploy.env` to `.env` if you want the same keys; `.env` stays gitignored for secrets.
 - For Hyperspeed-hosted DNS linking, inject only:
   - `PROVISIONING_BOOTSTRAP_TOKEN` (issued server-side by Hyperspeed provisioning control plane)
   - `PROVISIONING_BASE_URL` (defaults to `https://provision-gw.hyperspeedapp.com`)
@@ -48,7 +48,7 @@ The open-source stack allows **at most one organization** in the database. The *
 | Variable | Role |
 |----------|------|
 | `JWT_SECRET` | HMAC key for access tokens (required in production) |
-| `HS_SSH_ENCRYPTION_KEY` | Base64, 32 bytes—required if you use Terminal SSH storage (see `.env.example`) |
+| `HS_SSH_ENCRYPTION_KEY` | Base64, 32 bytes—required if you use Terminal SSH storage (see `deploy.env` / `.env.example`) |
 | `DEBUG` | Default `1` for first deploy; set **`0`** in production and tighten CORS. |
 | `CORS_ORIGIN` | Default `http://localhost:18080` in compose. When **`DEBUG=0`**, must match the **exact** browser origin (scheme + host + port). **Local Vite:** e.g. `http://localhost:5173` |
 | `PUBLIC_APP_URL` | Optional. Public HTTPS URL hint during onboarding (e.g. `https://hyperspeed.example.com`) |
