@@ -55,16 +55,6 @@ type Config struct {
 	PublicAppURL string
 	// GitWorkdirBase is the directory for per-space git clones (IDE Git integration). Empty = disabled.
 	GitWorkdirBase string
-	// ProvisioningBaseURL is the public Hyperspeed provisioning gateway origin (HTTPS Worker URL, no trailing path). Empty = provisioning disabled.
-	ProvisioningBaseURL string
-	// ProvisioningInstallID identifies this deployment to the gateway; Hyperspeed stores the matching secret in Worker KV.
-	ProvisioningInstallID string
-	// ProvisioningInstallSecret is the HMAC key shared with the gateway for this install (not the control-plane bearer).
-	ProvisioningInstallSecret string
-	// ProvisioningBootstrapToken is a one-time token exchanged at startup for install credentials (optional).
-	ProvisioningBootstrapToken string
-	// ProvisioningStatePath is where bootstrap persists JSON (default DefaultProvisioningStatePath).
-	ProvisioningStatePath string
 	// UpstreamGitHubRepo is optional "owner/name" for client-side update checks (public metadata only).
 	UpstreamGitHubRepo string
 	// UpdateManifestURL is optional HTTPS URL to a static JSON manifest for update checks (public metadata only).
@@ -104,7 +94,6 @@ func (c Config) Validate() error {
 }
 
 func Load() Config {
-	pBase, pID, pSecret := loadProvisioningFromEnvFilesAndState()
 	return Config{
 		DatabaseURL:                        getEnv("DATABASE_URL", "postgres://hyperspeed:hyperspeed@localhost:5432/hyperspeed?sslmode=disable"),
 		RedisURL:                           getEnv("REDIS_URL", "redis://localhost:6379/0"),
@@ -134,11 +123,6 @@ func Load() Config {
 		PublicAPIBaseURL:                   getEnv("PUBLIC_API_BASE_URL", ""),
 		PublicAppURL:                       strings.TrimSpace(getEnv("PUBLIC_APP_URL", "")),
 		GitWorkdirBase:             getEnv("HS_GIT_WORKDIR_BASE", ""),
-		ProvisioningStatePath:      strings.TrimSpace(getEnv("PROVISIONING_STATE_PATH", DefaultProvisioningStatePath)),
-		ProvisioningBootstrapToken: strings.TrimSpace(getEnv("PROVISIONING_BOOTSTRAP_TOKEN", "")),
-		ProvisioningBaseURL:        pBase,
-		ProvisioningInstallID:      pID,
-		ProvisioningInstallSecret:    pSecret,
 		UpstreamGitHubRepo:                 strings.TrimSpace(getEnv("UPSTREAM_GITHUB_REPO", "")),
 		UpdateManifestURL:                  strings.TrimSpace(getEnv("UPDATE_MANIFEST_URL", "")),
 		Debug:                              envBool("DEBUG") || envBool("HYPERSPEED_DEBUG"),

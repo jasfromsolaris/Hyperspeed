@@ -6,5 +6,3 @@ coverage
 .DS_Store
 apps/api/tmp
 apps/api/server
-secrets/provisioning_install_id
-secrets/provisioning_install_secret

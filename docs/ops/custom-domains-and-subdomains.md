@@ -1,105 +1,61 @@
-# Custom domains and Hyperspeed-provided subdomains (self-host only)
+# Custom domains for self-hosted Hyperspeed
 
-This document describes how **public hostnames** work for teams that **always run Hyperspeed on their own infrastructure** (Docker on a VPS or equivalent). Hyperspeed Inc does not host customer application stacks.
+This document covers public hostname setup for teams that run Hyperspeed on their own infrastructure (Docker on a VPS or similar).
 
-**Canonical zone:** Use **`hyperspeedapp.com`** for Hyperspeed-operated examples (marketing site, gifted subdomains like `acme.hyperspeedapp.com`). Do not use **`hyperspeed.com`** in docs or product copy; it is a different domain.
+## Product rule
 
-## Product rules
+Hyperspeed supports **custom domains you control** (for example `app.customer.com`). DNS records are managed at your DNS provider.
 
-| Rule | Detail |
-|------|--------|
-| Hosting | The customer always runs the Hyperspeed stack (API, web, Postgres, object storage, etc.). |
-| Bring-your-own (BYO) domain | Supported and recommended when the team already controls DNS (e.g. `app.customer.com`). |
-| Gifted subdomain | Optional: e.g. `acme.hyperspeedapp.com` **only** when the customer does not have (or does not want to use) their own domain. DNS under `hyperspeedapp.com` points at **their** public IP. |
-
-## Marketing site vs application origin
-
-- **Marketing** (e.g. Framer) may live at `www.hyperspeedapp.com` or the domain apex. That site is **not** the Hyperspeed app.
-- **Application** is whatever HTTPS origin users open to use Hyperspeed: either a **BYO hostname** or a **gifted subdomain** that resolves to the customer’s reverse proxy.
-
-The SPA is designed to call `/api/...` on the **same origin** when built without a separate API URL (see [README_SELF_HOST.md](../../README_SELF_HOST.md)). The browser’s address bar origin must match how you configure the API (see [Configuration](#configuration) below).
-
-## BYO domain checklist
+## Domain checklist
 
 1. **DNS**  
-   Point the hostname at the server: typically an **A** (or **AAAA**) record to the server’s public IP, or a **CNAME** to another hostname that ultimately resolves to that server.
+   Point your hostname to the server running Hyperspeed:
+   - `A`/`AAAA` to your public IP, or
+   - `CNAME` to another hostname that resolves to that server.
 
 2. **TLS**  
-   Terminate HTTPS on the customer’s edge (Caddy, Traefik, or nginx) with a valid certificate (Let’s Encrypt HTTP-01 or DNS-01 is typical).
+   Terminate HTTPS on your edge (Caddy, Traefik, nginx, or cloud load balancer) with a valid certificate.
 
 3. **Reverse proxy**  
-   Route `/api` (including WebSocket upgrades) to the API service and serve the static web UI on `/`. The repository [Caddyfile](../../Caddyfile) uses an **`http://`** site block (any Host) on container port **80**; default compose maps host **18080** → **80**. **Production** with automatic TLS at your app often uses a reverse proxy or a hostname block, for example:
+   Route `/api` (including WebSocket upgrades) to the API service and serve the web UI on `/`.
 
-   ```caddy
-   app.customer.com {
-       encode gzip
-       handle /api/* {
-           reverse_proxy api:8080
-       }
-       handle /health {
-           reverse_proxy api:8080
-       }
-       handle {
-           reverse_proxy web:80
-       }
-   }
-   ```
-
-   Adjust service names and ports to match your Compose network.
-
-4. **Configuration (environment variables)**  
-   - **`CORS_ORIGIN`**: Set to the **exact** public origin users type in the browser, e.g. `https://app.customer.com` (scheme + host + port if non-default). The API reads this from [`apps/api/internal/config/config.go`](../../apps/api/internal/config/config.go).  
-   - **`PUBLIC_API_BASE_URL`**: Set when the API must emit absolute URLs that match the public API origin (for example IDE **preview** iframe URLs). If the reverse proxy exposes the API at `https://app.customer.com/api`, set `PUBLIC_API_BASE_URL=https://app.customer.com` (no trailing path; paths are appended as `/api/...`). See [docs/adr/ide-preview-phase2.md](../adr/ide-preview-phase2.md).
+4. **Environment**  
+   - Set `CORS_ORIGIN` to the exact browser origin (for example `https://app.customer.com`).
+   - Set `PUBLIC_API_BASE_URL` when the API must emit absolute URLs (for example preview URLs).
 
 5. **Web build**  
-   For same-origin deployment, build the web app so the browser uses relative `/api` (e.g. `VITE_API_URL` empty when served behind the same host as in [README_SELF_HOST.md](../../README_SELF_HOST.md)).
+   Keep `VITE_API_URL` empty for same-origin `/api` calls when web and API share a host.
 
-## Gifted subdomain (e.g. `acme.hyperspeedapp.com`)
+## Reference Caddy host block
 
-**Mechanics**
+```caddy
+app.customer.com {
+    encode gzip
+    handle /api/* {
+        reverse_proxy api:8080
+    }
+    handle /health {
+        reverse_proxy api:8080
+    }
+    handle {
+        reverse_proxy web:80
+    }
+}
+```
 
-1. Customer deploys Hyperspeed and has a **stable public IP** (or updates DNS when it changes).
-2. Hyperspeed (the company) creates a DNS **A** record: `acme.hyperspeedapp.com` → that IP. TLS is still obtained on **the customer’s server** (HTTP-01 to that IP for that hostname), because HTTPS terminates there.
-3. Customer configures **`CORS_ORIGIN`** and **`PUBLIC_API_BASE_URL`** using `https://acme.hyperspeedapp.com` (same rules as BYO).
+Adjust service names and ports to match your Compose network.
 
-### Security boundary (non-negotiable)
+## Validation playbook
 
-- **Cloudflare API tokens** for the `hyperspeedapp.com` zone must live **only** on infrastructure Hyperspeed operates: the **control-plane** service (see below). They **must not** appear in customer `.env` for the open-source stack.
-- The **control-plane bearer token** must not appear in customer `.env` either. Hyperspeed runs a **provisioning gateway** (Cloudflare Worker) that holds that bearer and talks to the private control plane. The self-hosted API uses **`PROVISIONING_INSTALL_ID`** + **`PROVISIONING_INSTALL_SECRET`** to sign requests to the gateway (scoped to that install).
-
-### Provisioning service (Hyperspeed-operated)
-
-Hyperspeed runs the provisioning service outside the customer Docker stack. End users do not run this service and do not manage Cloudflare/control-plane secrets in their app environment.
-
-### OSS API integration
-
-When the self-hosted API is linked (normally via one-time **`PROVISIONING_BOOTSTRAP_TOKEN`** exchange), it exposes:
-
-- **`GET /api/v1/public/instance`** — `provisioning_enabled`, and when provisioning is enabled `provisioning_base_domain` is always `hyperspeedapp.com` (gifted DNS is `*.hyperspeedapp.com`). No secrets in the response.
-- **`POST /api/v1/provisioning/claim`** (authenticated) — signs and forwards `slug` and `ipv4` to `{PROVISIONING_BASE_URL}/v1/claims`. Stable error codes include `invalid_slug`, `invalid_ipv4`, `slug_taken`, `rate_limited`, `provisioning_unavailable`.
-- **`PATCH /api/v1/organizations/{orgId}`** (org `manage`) — same as today for `intended_public_url`, plus optional **`provision_gifted_dns`**: when `true`, include **`public_ipv4`**. The server calls the gateway **first** (same as `POST .../provisioning/claim`), then saves `intended_public_url` only if the claim succeeds. The intended URL must be **`https://{slug}.hyperspeedapp.com`** for this path. This keeps a single “Save & create DNS” action in **Workspace settings** without exposing Cloudflare tokens.
-
-The OSS stack **never** stores Cloudflare zone credentials or the control-plane bearer.
-
-See [README_SELF_HOST.md](../../README_SELF_HOST.md).
-
-### Operator or manual DNS
-
-If provisioning is **not** configured, use a **manual or internal** process: customer requests a subdomain; operator verifies IP and slug, creates the **A** record, and points them to this document for TLS and env vars. The technical steps match the automated path once DNS exists.
-
----
-
-## Validation playbook (E2E smoke)
-
-Use this checklist after pointing a **public hostname** (BYO or gifted) at a self-hosted instance.
+Use this checklist after switching to a public hostname:
 
 | Step | What to verify |
 |------|----------------|
-| **DNS** | `dig` / `nslookup`: the app hostname resolves to the expected public IP. |
-| **TLS** | Browser shows a valid certificate for that hostname (no mixed-content or cert name warnings for the app origin). |
-| **App same-origin** | Log in; open DevTools Network: API calls go to `https://<hostname>/api/...` with no CORS failures. |
-| **Previews** | If using IDE Phase 2 preview: `PUBLIC_API_BASE_URL` is set; create a preview session and confirm the iframe loads (see [ide-preview-phase2.md](../adr/ide-preview-phase2.md)). |
-| **WebSocket** | Open a space with realtime features; connection to `/api/v1/organizations/.../ws` succeeds (wss behind HTTPS). |
-| **Health** | API exposes `GET /health` on the API process (JSON `{"status":"ok"}`). Ensure your edge proxy forwards `/health` to the API if you want it on the public hostname (the sample Caddyfile does this); the default web container only proxies `/api/` unless you add a route. |
+| DNS | `dig` / `nslookup` resolves to the expected public IP. |
+| TLS | Browser shows a valid certificate for your hostname. |
+| Same-origin API | DevTools requests go to `https://<hostname>/api/...` with no CORS failures. |
+| Previews | If using preview features, `PUBLIC_API_BASE_URL` is set and preview iframe URLs load. |
+| WebSocket | Realtime connects via `/api/v1/organizations/.../ws` over HTTPS/WSS. |
+| Health | `GET /health` is reachable through your edge routing. |
 
-Repeat after **any** change to DNS, IP, or TLS termination.
+Repeat checks after DNS, IP, TLS, or proxy changes.

@@ -32,7 +32,6 @@ import (
 	"hyperspeed/api/internal/migrate"
 	"hyperspeed/api/internal/openrouter"
 	"hyperspeed/api/internal/overduetasks"
-	"hyperspeed/api/internal/provisioning"
 	"hyperspeed/api/internal/rest"
 	"hyperspeed/api/internal/store"
 	"hyperspeed/api/internal/terminal"
@@ -42,12 +41,6 @@ import (
 
 func main() {
 	cfg := config.Load()
-	if err := provisioning.ExchangeBootstrapIfNeeded(context.Background(), &cfg); err != nil {
-		slog.Error("provisioning bootstrap", "err", err)
-		os.Exit(1)
-	}
-	provRuntime := provisioning.NewRuntime()
-	provRuntime.Set(cfg.ProvisioningBaseURL, cfg.ProvisioningInstallID, cfg.ProvisioningInstallSecret)
 	if err := cfg.Validate(); err != nil {
 		slog.Error("config", "err", err)
 		os.Exit(1)
@@ -114,24 +107,12 @@ func main() {
 	}
 	_ = objStore.EnsureBucket(ctx)
 
-	statePath := strings.TrimSpace(cfg.ProvisioningStatePath)
-	if statePath == "" {
-		statePath = config.DefaultProvisioningStatePath
-	}
-	provH := &rest.ProvisionHandler{
-		Store:      st,
-		Runtime:    provRuntime,
-		StatePath:  statePath,
-		HTTPClient: nil,
-	}
 	orgH := &rest.OrgHandler{
 		Store:         st,
 		EncryptKeyB64: cfg.SSHEncryptKey,
-		Provision:     provH,
 	}
 	publicH := &rest.PublicHandler{
 		Store:              st,
-		Provisioning:       provRuntime,
 		UpstreamGitHubRepo: cfg.UpstreamGitHubRepo,
 		UpdateManifestURL:  cfg.UpdateManifestURL,
 		PublicAppURL:       cfg.PublicAppURL,
@@ -292,9 +273,6 @@ func main() {
 			r.Post("/auth/logout", authSvc.Logout)
 			r.Post("/invites/{token}/accept", inviteH.Accept)
 			r.Post("/presence/ping", presenceH.Ping)
-			r.With(httprate.Limit(5, time.Minute)).Post("/provisioning/apply-bootstrap-token", provH.ApplyBootstrapToken)
-			r.Post("/provisioning/claim", provH.Claim)
-			r.Delete("/provisioning/claim/{slug}", provH.DeleteClaim)
 
 			r.Route("/organizations", func(r chi.Router) {
 				r.Get("/", orgH.List)

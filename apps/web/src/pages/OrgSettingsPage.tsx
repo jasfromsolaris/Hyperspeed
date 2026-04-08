@@ -2,29 +2,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { apiFetch } from "../api/http";
-import { fetchPublicInstance, type PublicInstance } from "../api/instance";
 import type { Organization, OrgFeatures, SignupRequestRow } from "../api/types";
-import { HyperspeedTeamUrlInput } from "../components/HyperspeedTeamUrlInput";
-import {
-  GIFTED_SUBDOMAIN_APEX,
-  GIFTED_TEAM_WWW_PREFIX,
-  intendedUrlFromTeamSubdomain,
-  parseTeamSubdomainFromIntendedUrl,
-} from "../constants/giftedDomain";
 
-function buildIntendedUrlSaveActivity(
-  org: Organization,
-  inst: PublicInstance | undefined,
-  opts?: { provisionedThisRequest?: boolean },
-): string[] {
-  const intendedSub = parseTeamSubdomainFromIntendedUrl(org.intended_public_url);
-  const giftedRaw = org.gifted_subdomain_slug?.trim();
-  const dnsAligned =
-    !!intendedSub &&
-    !!giftedRaw &&
-    intendedSub.toLowerCase() === giftedRaw.toLowerCase();
-  const canAutoDNS = !!inst?.provisioning_enabled;
-
+function buildIntendedUrlSaveActivity(org: Organization): string[] {
   const lines: string[] = [
     `[${new Date().toLocaleString()}]`,
     org.intended_public_url
@@ -32,29 +12,9 @@ function buildIntendedUrlSaveActivity(
       : "Cleared your team URL.",
   ];
 
-  if (opts?.provisionedThisRequest) {
-    lines.push(
-      "A public DNS record was created for this address pointing to the IP you entered.",
-    );
-    lines.push(
-      "HTTPS still depends on how your server or reverse proxy is set up for that hostname.",
-    );
-  } else if (dnsAligned) {
-    lines.push(
-      "DNS for this workspace matches this team URL.",
-    );
-    lines.push(
-      "HTTPS still depends on how your server or reverse proxy is set up for that hostname.",
-    );
-  } else if (canAutoDNS) {
-    lines.push(
-      "Only your saved URL was updated. To also publish DNS, turn on “Create the DNS record…” below, enter your public IP, and use Save URL & DNS.",
-    );
-  } else {
-    lines.push(
-      "Only your saved URL was updated. This server can’t create DNS for you—add a record at your domain host, or ask your administrator to enable automatic team DNS.",
-    );
-  }
+  lines.push(
+    "Only your saved URL was updated. Configure DNS at your domain provider and HTTPS at your server or reverse proxy.",
+  );
 
   if (org.intended_public_url) {
     try {
@@ -78,42 +38,8 @@ function buildIntendedUrlSaveActivity(
           `You’re on ${here} but your team URL is ${origin}. Turn on “Trust this team URL on the server” when you save if you want the server to accept that address.`,
         );
       }
-      if (intendedSub) {
-        const publicUrl = `https://${GIFTED_TEAM_WWW_PREFIX}${intendedSub}.${GIFTED_SUBDOMAIN_APEX}`;
-        if (canAutoDNS) {
-          lines.push(
-            `That hostname (${publicUrl}) must exist in public DNS before it opens in a browser—use Save URL & DNS if you enabled automatic DNS, or add DNS yourself.`,
-          );
-        } else {
-          lines.push(
-            `That hostname (${publicUrl}) must exist in public DNS before it opens in a browser.`,
-          );
-        }
-      }
     } catch {
       // ignore malformed URL
-    }
-  }
-
-  if (inst?.provisioning_enabled) {
-    const gifted = org.gifted_subdomain_slug?.trim();
-    const base = inst.provisioning_base_domain;
-    if (base && gifted) {
-      const url = `https://${GIFTED_TEAM_WWW_PREFIX}${gifted}.${base}`;
-      if (!dnsAligned) {
-        lines.push(`DNS on file for this workspace: ${url}`);
-      }
-      if (intendedSub && gifted) {
-        if (intendedSub.toLowerCase() !== gifted.toLowerCase()) {
-          lines.push(
-            `Your team name in the URL (${intendedSub}) doesn’t match the DNS name on file (${gifted}).`,
-          );
-        }
-      }
-    } else if (!dnsAligned) {
-      lines.push(
-        "No automatic DNS record for this workspace yet—use Save URL & DNS above if that option is available.",
-      );
     }
   }
 
@@ -159,58 +85,22 @@ export default function OrgSettingsPage() {
     },
   });
 
-  const instanceQ = useQuery({
-    queryKey: ["public-instance"],
-    queryFn: fetchPublicInstance,
-  });
-
-  const [teamSubdomain, setTeamSubdomain] = useState("");
+  const [intendedUrl, setIntendedUrl] = useState("");
   useEffect(() => {
-    setTeamSubdomain(
-      parseTeamSubdomainFromIntendedUrl(orgQ.data?.intended_public_url),
-    );
+    setIntendedUrl(orgQ.data?.intended_public_url ?? "");
   }, [orgQ.data?.intended_public_url]);
 
-  const [provisionDns, setProvisionDns] = useState(false);
   /** When true, PATCH sends sync_runtime_origin so the API updates DB-backed CORS / preview base. */
   const [syncRuntimeOrigin, setSyncRuntimeOrigin] = useState(true);
-  const [publicIPv4, setPublicIPv4] = useState("");
   const [intendedUrlErr, setIntendedUrlErr] = useState<string | null>(null);
-  const [claimErr, setClaimErr] = useState<string | null>(null);
   const [intendedUrlActivity, setIntendedUrlActivity] = useState<{
     at: number;
     lines: string[];
   } | null>(null);
 
-  const [bootstrapToken, setBootstrapToken] = useState("");
-
-  const applyBootstrap = useMutation({
-    mutationFn: async (token: string) => {
-      const res = await apiFetch("/api/v1/provisioning/apply-bootstrap-token", {
-        method: "POST",
-        json: { bootstrap_token: token },
-      });
-      if (res.status === 409) {
-        await qc.invalidateQueries({ queryKey: ["public-instance"] });
-        return { already_linked: true as const };
-      }
-      if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(j.error || "bootstrap failed");
-      }
-      return (await res.json()) as { ok?: boolean; provisioning_enabled?: boolean };
-    },
-    onSuccess: () => {
-      setBootstrapToken("");
-      void qc.invalidateQueries({ queryKey: ["public-instance"] });
-    },
-  });
-
   const patchOrg = useMutation({
     mutationFn: async (body: {
       intended_public_url: string | null;
-      provision_gifted_dns?: boolean;
-      public_ipv4?: string;
       sync_runtime_origin?: boolean;
     }) => {
       const res = await apiFetch(`/api/v1/organizations/${orgId}`, {
@@ -223,123 +113,37 @@ export default function OrgSettingsPage() {
       }
       return (await res.json()) as Organization;
     },
-    onSuccess: (o, variables) => {
+    onSuccess: (o) => {
       qc.setQueryData(["org", orgId], o);
       void qc.invalidateQueries({ queryKey: ["orgs"] });
-      const inst = qc.getQueryData<PublicInstance>(["public-instance"]);
-      const provisionedThisRequest =
-        !!variables.provision_gifted_dns && variables.intended_public_url != null;
       setIntendedUrlActivity({
         at: Date.now(),
-        lines: buildIntendedUrlSaveActivity(o, inst, {
-          provisionedThisRequest,
-        }),
+        lines: buildIntendedUrlSaveActivity(o),
       });
     },
   });
 
-  const revokeSubdomain = useMutation({
-    mutationFn: async (slug: string) => {
-      const res = await apiFetch(
-        `/api/v1/provisioning/claim/${encodeURIComponent(slug)}`,
-        { method: "DELETE" },
-      );
-      if (!res.ok) {
-        const j = (await res.json().catch(() => ({}))) as { error?: string };
-        throw new Error(j.error || "revoke_failed");
-      }
-    },
-    onSuccess: () => {
-      void qc.invalidateQueries({ queryKey: ["org", orgId] });
-      void qc.invalidateQueries({ queryKey: ["orgs"] });
-      setClaimErr(null);
-    },
-  });
-
-  function mapClaimError(code: string): string {
-    switch (code) {
-      case "invalid_slug":
-        return "Subdomain is invalid or reserved.";
-      case "invalid_ipv4":
-        return "Enter a valid public IPv4 for DNS.";
-      case "slug_taken":
-        return "That subdomain is already claimed.";
-      case "rate_limited":
-        return "Too many provisioning requests. Try again later.";
-      case "provision_gifted_dns requires intended_public_url":
-        return "Intended URL is required to create DNS.";
-      case "public_ipv4 required when provision_gifted_dns is true":
-        return "Enter your server’s public IPv4 to create the DNS record.";
-      case "intended_public_url must be https://www.{subdomain}.hyperspeedapp.com":
-        return "Use the team URL form above (https://www.…hyperspeedapp.com).";
-      case "provisioning_unavailable":
-        return "Subdomain provisioning is not available.";
-      default:
-        return code;
-    }
-  }
-
   function onSaveIntendedUrl(e: FormEvent) {
     e.preventDefault();
     setIntendedUrlErr(null);
-    const t = teamSubdomain.trim();
-    if (!t) {
-      setProvisionDns(false);
+    const trimmed = intendedUrl.trim();
+    if (!trimmed) {
       patchOrg.mutate({
         intended_public_url: null,
         sync_runtime_origin: syncRuntimeOrigin,
       });
       return;
     }
-    const full = intendedUrlFromTeamSubdomain(t);
-    if (!full) {
+    const low = trimmed.toLowerCase();
+    if (!low.startsWith("http://") && !low.startsWith("https://")) {
       setIntendedUrlErr(
-        "Use a valid subdomain: letters, numbers, hyphens (not at the start or end).",
+        "Use a full URL that starts with http:// or https://.",
       );
       return;
     }
-    const inst = instanceQ.data;
-    if (provisionDns && inst?.provisioning_enabled) {
-      const ip = publicIPv4.trim();
-      if (!ip) {
-        setIntendedUrlErr(
-          "Enter your server’s public IPv4 to create the DNS record.",
-        );
-        return;
-      }
-      patchOrg.mutate({
-        intended_public_url: full,
-        provision_gifted_dns: true,
-        public_ipv4: ip,
-        sync_runtime_origin: syncRuntimeOrigin,
-      });
-      return;
-    }
     patchOrg.mutate({
-      intended_public_url: full,
+      intended_public_url: trimmed,
       sync_runtime_origin: syncRuntimeOrigin,
-    });
-  }
-
-  function onRevoke() {
-    const slug = orgQ.data?.gifted_subdomain_slug?.trim();
-    if (!slug) return;
-    if (
-      !window.confirm(
-        `Remove DNS for ${slug} and clear it from this workspace?`,
-      )
-    ) {
-      return;
-    }
-    setClaimErr(null);
-    revokeSubdomain.mutate(slug, {
-      onError: (err) => {
-        setClaimErr(
-          mapClaimError(
-            err instanceof Error ? err.message : "Revoke failed",
-          ),
-        );
-      },
     });
   }
 
@@ -386,13 +190,6 @@ export default function OrgSettingsPage() {
 
   const fe = featuresQ.data;
   const pending = signupReqQ.data ?? [];
-  const inst = instanceQ.data;
-  const org = orgQ.data;
-  const giftedHost =
-    inst?.provisioning_base_domain && org?.gifted_subdomain_slug
-      ? `https://${GIFTED_TEAM_WWW_PREFIX}${org.gifted_subdomain_slug}.${inst.provisioning_base_domain}`
-      : null;
-
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-background">
       <div className="mx-auto max-w-4xl px-4 py-8">
@@ -417,8 +214,7 @@ export default function OrgSettingsPage() {
             <p className="mt-1 text-sm text-muted-foreground">
               The address where your team will use Hyperspeed in the browser (for example when
               you&apos;re not on localhost). Save it here, optionally tell the server to trust
-              that address, and—if your host supports it—create the public DNS record in one
-              step.
+              that address. DNS and HTTPS are managed by your host or domain provider.
             </p>
             <p className="mt-2 text-xs text-muted-foreground">
               Current browser origin:{" "}
@@ -434,19 +230,20 @@ export default function OrgSettingsPage() {
                   Team URL
                 </label>
                 <p className="mt-1 text-xs text-muted-foreground">
-                  The label you type becomes{" "}
-                  <span className="font-mono text-[11px]">
-                    {`https://www.<name>.${GIFTED_SUBDOMAIN_APEX}`}
-                  </span>
-                  .
+                  Enter the full URL your team should use, for example{" "}
+                  <span className="font-mono text-[11px]">https://app.example.com</span>.
                 </p>
-                <HyperspeedTeamUrlInput
-                  value={teamSubdomain}
-                  onChange={(v) => {
+                <input
+                  className="w-full max-w-xl rounded-sm border border-input bg-background px-3 py-2 text-sm"
+                  placeholder="https://app.example.com"
+                  value={intendedUrl}
+                  onChange={(e) => {
                     setIntendedUrlActivity(null);
-                    setTeamSubdomain(v);
+                    setIntendedUrl(e.target.value);
                   }}
                   disabled={patchOrg.isPending || orgQ.isPending}
+                  autoComplete="off"
+                  spellCheck={false}
                 />
                 <label className="flex cursor-pointer items-start gap-2 text-sm text-foreground">
                   <input
@@ -464,120 +261,13 @@ export default function OrgSettingsPage() {
                     address in the browser without extra server configuration.
                   </span>
                 </label>
-                <div className="space-y-2 pt-1">
-                  <div className="text-xs font-medium text-muted-foreground">
-                    Automatic DNS (optional)
-                  </div>
-                  {inst?.provisioning_enabled ? (
-                    <>
-                      <p className="text-xs text-muted-foreground">
-                        If this Hyperspeed server is set up for it, you can publish a public DNS
-                        name in one step. The primary button becomes{" "}
-                        <strong className="font-medium text-foreground">Save URL &amp; DNS</strong>{" "}
-                        when the box below is checked.
-                      </p>
-                      <label className="flex cursor-pointer items-start gap-2 text-sm text-foreground">
-                        <input
-                          type="checkbox"
-                          className="mt-0.5"
-                          checked={provisionDns}
-                          onChange={(e) => {
-                            setProvisionDns(e.target.checked);
-                            setIntendedUrlErr(null);
-                          }}
-                          disabled={patchOrg.isPending || orgQ.isPending}
-                        />
-                        <span>
-                          Create the DNS record for this address (use your server&apos;s public
-                          IPv4—the address the internet uses to reach this app)
-                        </span>
-                      </label>
-                      {provisionDns ? (
-                        <input
-                          className="w-full max-w-xl rounded-sm border border-input bg-background px-3 py-2 text-sm"
-                          placeholder="Public IPv4 (e.g. 203.0.113.10)"
-                          value={publicIPv4}
-                          onChange={(e) => {
-                            setPublicIPv4(e.target.value);
-                            setIntendedUrlErr(null);
-                          }}
-                          autoComplete="off"
-                          disabled={patchOrg.isPending || orgQ.isPending}
-                        />
-                      ) : null}
-                    </>
-                  ) : (
-                    <div className="space-y-3 rounded-sm border border-border bg-muted/20 p-3 text-xs leading-relaxed text-muted-foreground">
-                      <p className="text-foreground">
-                        <strong className="font-medium text-foreground">Hyperspeed-hosted DNS</strong>{" "}
-                        (one-step <strong className="font-medium text-foreground">Save URL &amp; DNS</strong>)
-                        appears when this server is linked to Hyperspeed&apos;s provisioning service.
-                        Until then you only need <strong className="font-medium text-foreground">Save URL</strong>.
-                      </p>
-                      <p>
-                        You can still save your team URL here. For your own domain, add DNS at your
-                        provider.
-                      </p>
-                      <div className="rounded-sm border border-dashed border-border bg-background/50 p-3">
-                        <p className="text-[11px] font-medium text-foreground">
-                          Link this server (org admin)
-                        </p>
-                        <p className="mt-1 text-[11px] text-muted-foreground">
-                          Paste the one-time bootstrap token from Hyperspeed, then Apply. No Docker
-                          restart required.
-                        </p>
-                        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
-                          <input
-                            type="password"
-                            autoComplete="off"
-                            className="min-w-0 flex-1 rounded-sm border border-input bg-background px-2 py-1.5 font-mono text-[11px]"
-                            placeholder="Bootstrap token"
-                            value={bootstrapToken}
-                            onChange={(e) => setBootstrapToken(e.target.value)}
-                            disabled={applyBootstrap.isPending}
-                          />
-                          <button
-                            type="button"
-                            className="shrink-0 rounded-sm bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground disabled:opacity-50"
-                            disabled={
-                              applyBootstrap.isPending || !bootstrapToken.trim()
-                            }
-                            onClick={() =>
-                              applyBootstrap.mutate(bootstrapToken.trim())
-                            }
-                          >
-                            {applyBootstrap.isPending ? "Applying…" : "Apply token"}
-                          </button>
-                        </div>
-                        {applyBootstrap.isError ? (
-                          <p className="mt-2 text-[11px] text-destructive">
-                            {applyBootstrap.error instanceof Error
-                              ? applyBootstrap.error.message
-                              : "Failed"}
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                  )}
-                </div>
                 <div className="flex flex-wrap gap-2">
                   <button
                     type="submit"
-                    disabled={
-                      patchOrg.isPending ||
-                      orgQ.isPending ||
-                      (!!inst?.provisioning_enabled &&
-                        provisionDns &&
-                        teamSubdomain.trim() !== "" &&
-                        !publicIPv4.trim())
-                    }
+                    disabled={patchOrg.isPending || orgQ.isPending}
                     className="rounded-sm bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
                   >
-                    {patchOrg.isPending
-                      ? "Saving…"
-                      : inst?.provisioning_enabled && provisionDns
-                        ? "Save URL & DNS"
-                        : "Save URL"}
+                    {patchOrg.isPending ? "Saving…" : "Save URL"}
                   </button>
                   <button
                     type="button"
@@ -586,9 +276,7 @@ export default function OrgSettingsPage() {
                     onClick={() => {
                       setIntendedUrlErr(null);
                       setIntendedUrlActivity(null);
-                      setProvisionDns(false);
-                      setPublicIPv4("");
-                      setTeamSubdomain("");
+                      setIntendedUrl("");
                       patchOrg.mutate({
                         intended_public_url: null,
                         sync_runtime_origin: syncRuntimeOrigin,
@@ -603,11 +291,9 @@ export default function OrgSettingsPage() {
                 ) : null}
                 {patchOrg.isError ? (
                   <p className="text-sm text-destructive">
-                    {mapClaimError(
-                      patchOrg.error instanceof Error
-                        ? patchOrg.error.message
-                        : "patch organization",
-                    )}
+                    {patchOrg.error instanceof Error
+                      ? patchOrg.error.message
+                      : "patch organization"}
                   </p>
                 ) : null}
                 {intendedUrlActivity ? (
@@ -631,56 +317,6 @@ export default function OrgSettingsPage() {
                 ) : null}
               </form>
             )}
-
-            {inst?.provisioning_enabled ? (
-              <div className="mt-6 border-t border-border pt-4">
-                <div className="text-sm font-medium text-foreground">
-                  DNS status
-                </div>
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Records are created at{" "}
-                  <span className="font-mono">
-                    {`https://${GIFTED_TEAM_WWW_PREFIX}<subdomain>.${GIFTED_SUBDOMAIN_APEX}`}
-                  </span>{" "}
-                  when you use <strong>Save URL &amp; DNS</strong> above (with automatic DNS
-                  turned on).
-                </p>
-                {giftedHost ? (
-                  <p className="mt-2 text-sm">
-                    <span className="text-muted-foreground">Configured: </span>
-                    <span className="font-mono break-all">{giftedHost}</span>
-                  </p>
-                ) : (
-                  <p className="mt-2 text-xs text-muted-foreground">
-                    No gifted subdomain recorded for this workspace yet.
-                  </p>
-                )}
-                {org?.gifted_subdomain_slug ? (
-                  <div className="mt-3">
-                    <button
-                      type="button"
-                      disabled={revokeSubdomain.isPending}
-                      className="rounded-sm border border-destructive/50 px-3 py-1.5 text-sm text-destructive hover:bg-destructive/10 disabled:opacity-50"
-                      onClick={onRevoke}
-                    >
-                      {revokeSubdomain.isPending ? "Revoking…" : "Revoke DNS"}
-                    </button>
-                  </div>
-                ) : null}
-                {claimErr ? (
-                  <p className="mt-2 text-sm text-destructive">{claimErr}</p>
-                ) : null}
-                {revokeSubdomain.isError ? (
-                  <p className="mt-2 text-sm text-destructive">
-                    {mapClaimError(
-                      revokeSubdomain.error instanceof Error
-                        ? revokeSubdomain.error.message
-                        : "Revoke failed",
-                    )}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
           </div>
 
           <Link

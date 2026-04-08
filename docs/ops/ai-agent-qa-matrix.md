@@ -49,7 +49,7 @@ This matrix validates IDE Ask/Plan/Agent behavior across actor types and workspa
 1. Register user A, create the workspace, confirm `GET /api/v1/organizations` returns `can_create_organization: false` for subsequent requests.
 2. Register user B (no org), confirm dashboard hides “Create workspace” and B can join only via invite.
 
-## Self-host with public hostname (BYO or gifted subdomain)
+## Self-host with public hostname (BYO domain)
 
 Preconditions: instance reachable at a public HTTPS origin; `CORS_ORIGIN` and `PUBLIC_API_BASE_URL` aligned with that origin per [custom-domains-and-subdomains.md](custom-domains-and-subdomains.md).
 

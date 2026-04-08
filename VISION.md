@@ -11,9 +11,8 @@ Non-goals (for now):
 - Building a consumer-grade multi-tenant SaaS first.
 - Requiring Kubernetes.
 
-## Open source scope vs Hyperspeed-operated services
-- The **product teams run** is the open-source stack (API, web UI, Postgres, object storage) on **their** infrastructure. That is what belongs in the public repo and default `docker compose` flows.
-- **Hyperspeed Inc** may operate **separate** services (for example DNS provisioning for `*.hyperspeedapp.com` via a control plane that holds Cloudflare credentials). Those services are **not** required to self-host, are **not** shipped inside customer images, and **must not** embed zone-wide secrets in the OSS tree. Customer deployments may optionally call such services via documented env hooks (URL + scoped token) when a team chooses a company-provided subdomain.
+## Open source scope
+- The **product teams run** is the open-source stack (API, web UI, Postgres, object storage) on **their** infrastructure. That is what belongs in the public repo and default `docker compose` flows. Self-hosting does not depend on any Hyperspeed-operated DNS or side services.
 
 ## What “deploy and chill” means
 Hyperspeed should be operable by a team that can:
@@ -23,10 +22,10 @@ Hyperspeed should be operable by a team that can:
 - and have predictable backups + upgrades.
 
 ## Domains and tenancy (summary)
-- **Canonical zone** for Hyperspeed-operated examples and gifted subdomains: **`hyperspeedapp.com`** (do not use `hyperspeed.com` in product or docs for that purpose).
-- **Marketing** (e.g. landing on `www.hyperspeedapp.com`) is separate from the **application origin** teams use day to day (BYO hostname or `https://{slug}.hyperspeedapp.com`). The app always runs on infrastructure **the customer** controls.
+- **Canonical marketing / examples zone:** **`hyperspeedapp.com`** (do not use `hyperspeed.com` in product or docs for that purpose).
+- **Marketing** (e.g. landing on `www.hyperspeedapp.com`) is separate from the **application origin** teams use day to day (**bring your own hostname** and DNS). The app always runs on infrastructure **the customer** controls.
 - **Open-source stack:** **one organization per database** — there is no separate “SaaS” or multi-tenant deployment mode in the OSS tree; behavior is always single-org-per-Postgres.
-- **CEO / first install:** The first account on an empty database runs a **setup wizard** (name, email, password, workspace name, then a **hostname / go-live** step). First-time access is often via `http://localhost` or a LAN IP without public DNS; the product must not hard-block setup until a public FQDN exists. Teams record an optional **intended public URL** for later, then align `CORS_ORIGIN`, TLS, and `PUBLIC_API_BASE_URL` when DNS is ready ([docs/ops/custom-domains-and-subdomains.md](docs/ops/custom-domains-and-subdomains.md)). Optional **Hyperspeed-operated** `*.hyperspeedapp.com` DNS claims require a **public IPv4** and are skipped when the stack is only on localhost.
+- **CEO / first install:** The first account on an empty database runs a **setup wizard** (name, email, password, workspace name, then a **hostname / go-live** step). First-time access is often via `http://localhost` or a LAN IP without public DNS; the product must not hard-block setup until a public FQDN exists. Teams record an optional **intended public URL** for later, then align `CORS_ORIGIN`, TLS, and `PUBLIC_API_BASE_URL` when DNS is ready ([docs/ops/custom-domains-and-subdomains.md](docs/ops/custom-domains-and-subdomains.md)).
 - **Returning users:** Sign in or register on the same instance. **Register** does not create a second organization — the singleton org already exists. **Staff access policy:** workspace admins can allow **open sign-ups** (users land in a **pending approval** queue) or turn them off so only **invite links** add people (existing users can always sign in).
 - Full DNS, TLS, and `CORS_ORIGIN` / `PUBLIC_API_BASE_URL` guidance: [docs/ops/custom-domains-and-subdomains.md](docs/ops/custom-domains-and-subdomains.md).
 

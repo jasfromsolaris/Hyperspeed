@@ -34,17 +34,9 @@ The repository root **[`.env`](.env)** is the only env template: `KEY=value` lin
 | Variable | Why it may be blank in the template |
 |----------|-------------------------------------|
 | `JWT_SECRET`, `HS_SSH_ENCRYPTION_KEY` | You must set these for production (Compose still supplies dev defaults if empty—see table below). |
-| `PROVISIONING_INSTALL_ID`, `PROVISIONING_INSTALL_SECRET` | **Cannot** be prefilled in a public repo—Hyperspeed issues these **per install**. Use file paths (`PROVISIONING_*_FILE`) or your host’s secrets if you have them. |
-| `PROVISIONING_BOOTSTRAP_TOKEN` | One-time token from Hyperspeed’s control plane; leave blank until issued. |
-| `PROVISIONING_BOOTSTRAP_GATEWAY_URL` | Optional; empty means the API uses the default production gateway for bootstrap. |
-| `PROVISIONING_INSTALL_ID_FILE`, `PROVISIONING_INSTALL_SECRET_FILE` | Optional Docker secret paths; usually empty when using env vars. |
 | `UPDATE_MANIFEST_URL` | Optional alternative to `UPSTREAM_GITHUB_REPO` for update checks; leave empty if unused. |
 
 `UPSTREAM_GITHUB_REPO` is set to **`jasfromsolaris/Hyperspeed`** for optional in-app update metadata (users still opt in on the Dashboard).
-
-After a successful bootstrap, install credentials are persisted at `PROVISIONING_STATE_PATH`, so later restarts do not need a new bootstrap token.
-
-**In-app linking (no env, no restart):** an **org admin** can paste the one-time bootstrap token under **Workspace settings → Team URL** when automatic DNS is unavailable. The API calls `POST /api/v1/provisioning/apply-bootstrap-token`, persists the same state file, and turns on **Save URL & DNS** immediately without restarting Docker.
 
 ### Workspace limit (one organization per database)
 
@@ -65,20 +57,6 @@ The open-source stack allows **at most one organization** in the database. The *
 
 With Docker, the web image is built with **`VITE_API_URL` empty**; the SPA calls **`/api/...` on the same origin** as the page (via Caddy). When **`DEBUG=0`**, **`CORS_ORIGIN`** must match that origin.
 
-### Hyperspeed-hosted subdomain (optional, bootstrap-token first)
-
-If Hyperspeed operates DNS for **`*.hyperspeedapp.com`**, the primary one-click path is bootstrap exchange:
-
-| Variable | Role |
-|----------|------|
-| `PROVISIONING_BOOTSTRAP_TOKEN` | One-time token injected by Hyperspeed/deploy pipeline; API exchanges it for install credentials at startup |
-| `PROVISIONING_BASE_URL` | Optional gateway origin override; default is `https://provision-gw.hyperspeedapp.com` |
-| `PROVISIONING_STATE_PATH` | Persisted credentials path after exchange (default `/var/lib/hyperspeed/provisioning/state.json`) |
-
-When bootstrap succeeds, `GET /api/v1/public/instance` reports `provisioning_enabled: true` and `provisioning_base_domain: "hyperspeedapp.com"`. Authenticated users may call `POST /api/v1/provisioning/claim` during **first-time setup** (optional) or from workspace settings.
-
-Advanced fallback: you may still inject install-scoped `PROVISIONING_INSTALL_ID` + `PROVISIONING_INSTALL_SECRET` directly (env or mounted secret files), but this is not the default one-click path.
-
 ### Upgrading from older releases
 
 - **`DEPLOYMENT_MODE` removed:** The API no longer reads `DEPLOYMENT_MODE`. Behavior always matches the former **`self_host`** model (single org per database). Remove this variable from `.env` and Docker Compose.
@@ -93,9 +71,9 @@ Details: **[docs/ops/self-host-updates.md](docs/ops/self-host-updates.md)**.
 
 ## Domains (production)
 
-Teams **always self-host** the stack. They may use a **custom domain** (recommended when they already have DNS) or, if they have no domain, a **subdomain under hyperspeedapp.com** provisioned by Hyperspeed (DNS points at their server; TLS still runs on their machine). Set `CORS_ORIGIN` and `PUBLIC_API_BASE_URL` to match the public HTTPS origin users open in the browser.
+Teams **always self-host** the stack. Use a domain you control and point DNS at your server, then terminate TLS on your edge or reverse proxy. Set `CORS_ORIGIN` and `PUBLIC_API_BASE_URL` to match the public HTTPS origin users open in the browser.
 
-See **[docs/ops/custom-domains-and-subdomains.md](docs/ops/custom-domains-and-subdomains.md)** for BYO vs gifted subdomains, TLS behind Caddy/Traefik, and an end-to-end validation checklist.
+See **[docs/ops/custom-domains-and-subdomains.md](docs/ops/custom-domains-and-subdomains.md)** for DNS, TLS, and validation steps.
 
 ## Local development (without Docker for apps)
 

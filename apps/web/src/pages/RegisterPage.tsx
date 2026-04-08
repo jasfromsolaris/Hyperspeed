@@ -2,14 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { FormEvent, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { apiFetch } from "../api/http";
 import { fetchPublicInstance } from "../api/instance";
-import { HyperspeedTeamUrlInput } from "../components/HyperspeedTeamUrlInput";
-import {
-  GIFTED_SUBDOMAIN_APEX,
-  GIFTED_TEAM_WWW_PREFIX,
-  intendedUrlFromTeamSubdomain,
-} from "../constants/giftedDomain";
 
 export default function RegisterPage() {
   const { register } = useAuth();
@@ -19,9 +12,7 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [organizationName, setOrganizationName] = useState("");
-  const [teamSubdomain, setTeamSubdomain] = useState("");
-  const [claimSlug, setClaimSlug] = useState("");
-  const [claimIPv4, setClaimIPv4] = useState("");
+  const [intendedUrl, setIntendedUrl] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -79,17 +70,14 @@ export default function RegisterPage() {
   async function finishBootstrap(e: FormEvent) {
     e.preventDefault();
     setErr(null);
-    const sub = teamSubdomain.trim();
-    let intendedFull: string | undefined;
-    if (sub) {
-      const full = intendedUrlFromTeamSubdomain(sub);
-      if (!full) {
-        setErr(
-          "Use a valid team subdomain: letters, numbers, hyphens (not at the start or end).",
-        );
-        return;
-      }
-      intendedFull = full;
+    const intendedTrim = intendedUrl.trim();
+    if (
+      intendedTrim &&
+      !intendedTrim.toLowerCase().startsWith("http://") &&
+      !intendedTrim.toLowerCase().startsWith("https://")
+    ) {
+      setErr("Use a full URL that starts with http:// or https://.");
+      return;
     }
     setLoading(true);
     try {
@@ -98,43 +86,11 @@ export default function RegisterPage() {
         email,
         password,
         organization_name: organizationName,
-        intended_public_url: intendedFull,
+        intended_public_url: intendedTrim || undefined,
       });
       if (signupPending) {
         nav("/signup-pending");
         return;
-      }
-      if (
-        inst?.provisioning_enabled &&
-        claimSlug.trim() &&
-        claimIPv4.trim()
-      ) {
-        const res = await apiFetch("/api/v1/provisioning/claim", {
-          method: "POST",
-          json: {
-            slug: claimSlug.trim().toLowerCase(),
-            ipv4: claimIPv4.trim(),
-          },
-        });
-        if (!res.ok) {
-          const body = (await res.json().catch(() => ({}))) as {
-            error?: string;
-          };
-          const code = body.error || "claim_failed";
-          setErr(
-            code === "invalid_slug"
-              ? "Subdomain is invalid or reserved."
-              : code === "invalid_ipv4"
-                ? "Enter a valid public IPv4 for DNS."
-                : code === "slug_taken"
-                  ? "That subdomain is already claimed."
-                  : code === "provisioning_unavailable"
-                    ? "Subdomain provisioning is not available."
-                    : "Could not request DNS record. You can continue and try again later.",
-          );
-          setLoading(false);
-          return;
-        }
       }
       nav("/");
     } catch (ex) {
@@ -358,9 +314,13 @@ export default function RegisterPage() {
                 Intended team URL (optional)
               </label>
               <div className="mt-1">
-                <HyperspeedTeamUrlInput
-                  value={teamSubdomain}
-                  onChange={setTeamSubdomain}
+                <input
+                  className="w-full rounded-sm border border-input bg-background px-3 py-2 text-sm text-foreground outline-none ring-ring ring-offset-2 ring-offset-background focus-visible:ring-2"
+                  placeholder="https://app.example.com"
+                  value={intendedUrl}
+                  onChange={(e) => setIntendedUrl(e.target.value)}
+                  autoComplete="off"
+                  spellCheck={false}
                 />
               </div>
               <p className="mt-1 text-xs text-muted-foreground">
@@ -371,39 +331,6 @@ export default function RegisterPage() {
                 in the repository.
               </p>
             </div>
-
-            {inst?.provisioning_enabled ? (
-              <div className="space-y-2 rounded-sm border border-border p-3">
-                <p className="text-sm font-medium text-foreground">
-                  Hyperspeed-hosted subdomain (optional)
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Creates{" "}
-                  <span className="font-mono">
-                    {`https://${GIFTED_TEAM_WWW_PREFIX}<subdomain>.${GIFTED_SUBDOMAIN_APEX}`}
-                  </span>{" "}
-                  (Hyperspeed-hosted DNS). Only works when this server is reachable on the public internet
-                  with a stable IPv4. Skip if you are on localhost only — you can
-                  claim later when deployed.
-                </p>
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <input
-                    className="min-w-0 flex-1 rounded-sm border border-input bg-background px-3 py-2 text-sm"
-                    placeholder="Subdomain (e.g. acme)"
-                    value={claimSlug}
-                    onChange={(e) => setClaimSlug(e.target.value)}
-                    autoComplete="off"
-                  />
-                  <input
-                    className="min-w-0 flex-1 rounded-sm border border-input bg-background px-3 py-2 text-sm"
-                    placeholder="Public IPv4"
-                    value={claimIPv4}
-                    onChange={(e) => setClaimIPv4(e.target.value)}
-                    autoComplete="off"
-                  />
-                </div>
-              </div>
-            ) : null}
 
             {err && <p className="text-sm text-destructive">{err}</p>}
 

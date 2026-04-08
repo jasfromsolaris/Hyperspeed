@@ -1,263 +1,17 @@
 package rest
 
 import (
-	"context"
-	"encoding/json"
-	"errors"
 	"net/http"
 	"strings"
-	"time"
 
-	"github.com/go-chi/chi/v5"
-	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
-
-	"hyperspeed/api/internal/config"
-	"hyperspeed/api/internal/ctxkey"
 	"hyperspeed/api/internal/httpx"
-	"hyperspeed/api/internal/provisioning"
-	"hyperspeed/api/internal/rbac"
 	"hyperspeed/api/internal/store"
 	"hyperspeed/api/internal/version"
 )
 
-// ProvisionHandler forwards gifted-subdomain claims to the Hyperspeed-operated provisioning gateway
-// (Cloudflare Worker), which authenticates install HMAC and proxies to the private control plane.
-type ProvisionHandler struct {
-	Store *store.Store
-	// Runtime holds the active gateway URL and install credentials (hot-reloaded after apply-bootstrap-token).
-	Runtime   *provisioning.Runtime
-	StatePath string // persisted JSON path; empty uses config default
-	HTTPClient *http.Client
-}
-
-type claimBody struct {
-	Slug string `json:"slug"`
-	IPv4 string `json:"ipv4"`
-}
-
-func (h *ProvisionHandler) httpClient() *http.Client {
-	if h.HTTPClient != nil {
-		return h.HTTPClient
-	}
-	return &http.Client{Timeout: 45 * time.Second}
-}
-
-// Configured reports whether provisioning gateway URL and install credentials are set.
-func (h *ProvisionHandler) Configured() bool {
-	return h.configured()
-}
-
-func (h *ProvisionHandler) configured() bool {
-	return h.Runtime != nil && h.Runtime.Configured()
-}
-
-// postClaimAndSetOrg POSTs to the control plane and sets gifted_subdomain_slug on success.
-func (h *ProvisionHandler) postClaimAndSetOrg(ctx context.Context, orgID uuid.UUID, slug, ipv4 string) (successStatus int, respBody []byte, err error) {
-	if !h.configured() {
-		return 0, nil, provisioning.ErrProvisioningUnavailable()
-	}
-	base, id, secret := h.Runtime.Snapshot()
-	status, body, netErr := provisioning.PostClaims(ctx, base, id, secret, h.httpClient(), slug, ipv4)
-	if err := provisioning.ErrFromClaimResponse(status, body, netErr); err != nil {
-		return 0, nil, err
-	}
-	if h.Store != nil {
-		s := slug
-		_ = h.Store.SetOrgGiftedSubdomainSlug(ctx, orgID, &s)
-	}
-	return status, body, nil
-}
-
-// ClaimOrganization provisions DNS for slug and records gifted_subdomain_slug for orgID.
-func (h *ProvisionHandler) ClaimOrganization(ctx context.Context, orgID uuid.UUID, slug, ipv4 string) error {
-	slug = strings.ToLower(strings.TrimSpace(slug))
-	ipv4 = strings.TrimSpace(ipv4)
-	_, _, err := h.postClaimAndSetOrg(ctx, orgID, slug, ipv4)
-	return err
-}
-
-// Claim POST /api/v1/provisioning/claim — authenticated user; body { slug, ipv4 }.
-func (h *ProvisionHandler) Claim(w http.ResponseWriter, r *http.Request) {
-	if !h.configured() {
-		httpx.Error(w, http.StatusServiceUnavailable, "provisioning_unavailable")
-		return
-	}
-	uid, ok := ctxkey.UserID(r.Context())
-	if !ok {
-		httpx.Error(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-
-	var body claimBody
-	if err := httpx.DecodeJSON(r, &body); err != nil {
-		httpx.Error(w, http.StatusBadRequest, "invalid json")
-		return
-	}
-	body.Slug = strings.ToLower(strings.TrimSpace(body.Slug))
-	body.IPv4 = strings.TrimSpace(body.IPv4)
-	if body.Slug == "" || body.IPv4 == "" {
-		httpx.Error(w, http.StatusBadRequest, "slug and ipv4 required")
-		return
-	}
-
-	if h.Store == nil {
-		httpx.Error(w, http.StatusInternalServerError, "provisioning_unavailable")
-		return
-	}
-	orgs, err := h.Store.ListOrganizationsForUser(r.Context(), uid)
-	if err != nil || len(orgs) == 0 {
-		httpx.Error(w, http.StatusForbidden, "no organization")
-		return
-	}
-	orgID := orgs[0].ID
-
-	status, respBody, err := h.postClaimAndSetOrg(r.Context(), orgID, body.Slug, body.IPv4)
-	if err != nil {
-		var ce *provisioning.ClaimError
-		if errors.As(err, &ce) {
-			httpx.Error(w, ce.HTTPStatus, ce.Code)
-			return
-		}
-		httpx.Error(w, http.StatusInternalServerError, "provisioning_unavailable")
-		return
-	}
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_, _ = w.Write(respBody)
-}
-
-// DeleteClaim DELETE /api/v1/provisioning/claim/{slug} — org.manage; revokes DNS via control plane and clears local slug.
-func (h *ProvisionHandler) DeleteClaim(w http.ResponseWriter, r *http.Request) {
-	if !h.configured() {
-		httpx.Error(w, http.StatusServiceUnavailable, "provisioning_unavailable")
-		return
-	}
-	uid, ok := ctxkey.UserID(r.Context())
-	if !ok {
-		httpx.Error(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	if h.Store == nil {
-		httpx.Error(w, http.StatusInternalServerError, "provisioning_unavailable")
-		return
-	}
-	slugStr := strings.ToLower(strings.TrimSpace(chi.URLParam(r, "slug")))
-	if slugStr == "" {
-		httpx.Error(w, http.StatusBadRequest, "slug required")
-		return
-	}
-	orgID, err := h.Store.OrgIDByGiftedSubdomainSlug(r.Context(), slugStr)
-	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			httpx.Error(w, http.StatusNotFound, "claim_not_found")
-			return
-		}
-		httpx.Error(w, http.StatusInternalServerError, "organizations")
-		return
-	}
-	if !requireOrgPerm(w, r, h.Store, orgID, uid, rbac.OrgManage) {
-		return
-	}
-
-	base, id, secret := h.Runtime.Snapshot()
-	resp, respBody, netErr := provisioning.DeleteGatewayClaim(r.Context(), base, id, secret, h.httpClient(), slugStr)
-	if netErr != nil {
-		httpx.Error(w, http.StatusBadGateway, "provisioning_unavailable")
-		return
-	}
-
-	if resp >= 200 && resp < 300 || resp == http.StatusNotFound {
-		if _, err := h.Store.ClearOrgGiftedSubdomainSlugIfMatch(r.Context(), orgID, slugStr); err != nil {
-			httpx.Error(w, http.StatusInternalServerError, "clear claim")
-			return
-		}
-		w.WriteHeader(http.StatusNoContent)
-		return
-	}
-	if resp == http.StatusUnauthorized {
-		httpx.Error(w, http.StatusBadGateway, "provisioning_unavailable")
-		return
-	}
-	var errObj map[string]any
-	if json.Unmarshal(respBody, &errObj) == nil {
-		if e, ok := errObj["error"].(string); ok && e != "" {
-			httpx.Error(w, http.StatusBadGateway, e)
-			return
-		}
-	}
-	httpx.Error(w, http.StatusBadGateway, "provisioning_unavailable")
-}
-
-type applyBootstrapBody struct {
-	BootstrapToken string `json:"bootstrap_token"`
-}
-
-// ApplyBootstrapToken POST /api/v1/provisioning/apply-bootstrap-token — org.manage; body { bootstrap_token }.
-// Exchanges the one-time token with the gateway, persists state, and updates Runtime without restarting the process.
-func (h *ProvisionHandler) ApplyBootstrapToken(w http.ResponseWriter, r *http.Request) {
-	if h.Runtime == nil {
-		httpx.Error(w, http.StatusServiceUnavailable, "provisioning_unavailable")
-		return
-	}
-	if h.Runtime.Configured() {
-		httpx.JSON(w, http.StatusConflict, map[string]any{
-			"error":                 "already_linked",
-			"provisioning_enabled": true,
-		})
-		return
-	}
-	uid, ok := ctxkey.UserID(r.Context())
-	if !ok {
-		httpx.Error(w, http.StatusUnauthorized, "unauthorized")
-		return
-	}
-	if h.Store == nil {
-		httpx.Error(w, http.StatusInternalServerError, "provisioning_unavailable")
-		return
-	}
-	var body applyBootstrapBody
-	if err := httpx.DecodeJSON(r, &body); err != nil {
-		httpx.Error(w, http.StatusBadRequest, "invalid json")
-		return
-	}
-	tok := strings.TrimSpace(body.BootstrapToken)
-	if tok == "" {
-		httpx.Error(w, http.StatusBadRequest, "bootstrap_token required")
-		return
-	}
-
-	orgs, err := h.Store.ListOrganizationsForUser(r.Context(), uid)
-	if err != nil || len(orgs) == 0 {
-		httpx.Error(w, http.StatusForbidden, "no organization")
-		return
-	}
-	orgID := orgs[0].ID
-	if !requireOrgPerm(w, r, h.Store, orgID, uid, rbac.OrgManage) {
-		return
-	}
-
-	statePath := strings.TrimSpace(h.StatePath)
-	if statePath == "" {
-		statePath = config.DefaultProvisioningStatePath
-	}
-	base, id, secret, err := provisioning.PerformBootstrapExchange(r.Context(), tok, statePath)
-	if err != nil {
-		httpx.Error(w, http.StatusBadRequest, "bootstrap_failed")
-		return
-	}
-	h.Runtime.Set(base, id, secret)
-	httpx.JSON(w, http.StatusOK, map[string]any{
-		"ok":                   true,
-		"provisioning_enabled": true,
-	})
-}
-
 // PublicHandler exposes non-secret instance metadata for the SPA.
 type PublicHandler struct {
 	Store *store.Store
-	// Provisioning holds gateway URL + install credentials for instance metadata (same Runtime as ProvisionHandler).
-	Provisioning *provisioning.Runtime
 	// UpstreamGitHubRepo is optional "owner/name" for SPA update checks against GitHub releases.
 	UpstreamGitHubRepo string
 	// UpdateManifestURL is optional HTTPS URL to a static JSON manifest for update checks.
@@ -268,23 +22,18 @@ type PublicHandler struct {
 
 // Instance GET /api/v1/public/instance
 func (h *PublicHandler) Instance(w http.ResponseWriter, r *http.Request) {
-	prov := h.Provisioning != nil && h.Provisioning.Configured()
 	out := map[string]any{
-		"provisioning_enabled": prov,
-		"version":              version.Version,
-		"git_sha":              version.GitSHA,
+		"version": version.Version,
+		"git_sha": version.GitSHA,
 	}
-	if prov {
-		out["provisioning_base_domain"] = provisioning.GiftedSubdomainApex
+	if repo := strings.TrimSpace(h.UpstreamGitHubRepo); repo != "" {
+		out["upstream_github_repo"] = repo
 	}
-	if r := strings.TrimSpace(h.UpstreamGitHubRepo); r != "" {
-		out["upstream_github_repo"] = r
+	if manifestURL := strings.TrimSpace(h.UpdateManifestURL); manifestURL != "" {
+		out["update_manifest_url"] = manifestURL
 	}
-	if u := strings.TrimSpace(h.UpdateManifestURL); u != "" {
-		out["update_manifest_url"] = u
-	}
-	if u := strings.TrimSpace(h.PublicAppURL); u != "" {
-		out["public_app_url"] = u
+	if appURL := strings.TrimSpace(h.PublicAppURL); appURL != "" {
+		out["public_app_url"] = appURL
 	}
 	if h.Store != nil {
 		if n, err := h.Store.CountOrganizations(r.Context()); err == nil {

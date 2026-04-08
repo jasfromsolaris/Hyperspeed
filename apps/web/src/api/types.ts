@@ -26,8 +26,6 @@ export interface Organization {
   intended_public_url?: string | null;
   /** When set, API CORS and preview base URL prefer this origin at runtime (from “Sync server runtime” on save). */
   public_origin_override?: string | null;
-  /** Last Hyperspeed-hosted gifted subdomain label (DNS: www.{slug}.hyperspeedapp.com). */
-  gifted_subdomain_slug?: string | null;
 }
 
 /** GET /api/v1/organizations */

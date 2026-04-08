@@ -15,7 +15,6 @@ import (
 	"hyperspeed/api/internal/ctxkey"
 	"hyperspeed/api/internal/httpx"
 	"hyperspeed/api/internal/middleware"
-	"hyperspeed/api/internal/provisioning"
 	"hyperspeed/api/internal/rbac"
 	"hyperspeed/api/internal/store"
 )
@@ -23,7 +22,6 @@ import (
 type OrgHandler struct {
 	Store         *store.Store
 	EncryptKeyB64 string // HS_SSH_ENCRYPTION_KEY (same 32-byte material for org secrets)
-	Provision     *ProvisionHandler // optional; gifted DNS when provisioning is configured
 }
 
 func (h *OrgHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -126,23 +124,9 @@ func (h *OrgHandler) Patch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var wantProvision bool
-	if b, ok := raw["provision_gifted_dns"]; ok {
-		_ = json.Unmarshal(b, &wantProvision)
-	}
-	var publicIPv4 string
-	if v, ok := raw["public_ipv4"]; ok {
-		_ = json.Unmarshal(v, &publicIPv4)
-	}
-	publicIPv4 = strings.TrimSpace(publicIPv4)
-
 	syncRuntimeOrigin := parseSyncRuntimeOrigin(raw)
 
 	if string(rawVal) == "null" {
-		if wantProvision {
-			httpx.Error(w, http.StatusBadRequest, "provision_gifted_dns requires intended_public_url")
-			return
-		}
 		applyRo := syncRuntimeOrigin
 		o, err := h.Store.UpdateOrgIntendedPublicURL(r.Context(), orgID, nil, applyRo, nil)
 		if err != nil {
@@ -159,10 +143,6 @@ func (h *OrgHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	}
 	s = strings.TrimSpace(s)
 	if s == "" {
-		if wantProvision {
-			httpx.Error(w, http.StatusBadRequest, "provision_gifted_dns requires intended_public_url")
-			return
-		}
 		applyRo := syncRuntimeOrigin
 		o, err := h.Store.UpdateOrgIntendedPublicURL(r.Context(), orgID, nil, applyRo, nil)
 		if err != nil {
@@ -180,31 +160,6 @@ func (h *OrgHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	if !strings.HasPrefix(low, "http://") && !strings.HasPrefix(low, "https://") {
 		httpx.Error(w, http.StatusBadRequest, "intended_public_url must be an http(s) URL")
 		return
-	}
-
-	if wantProvision {
-		if h.Provision == nil || !h.Provision.Configured() {
-			httpx.Error(w, http.StatusServiceUnavailable, "provisioning_unavailable")
-			return
-		}
-		if publicIPv4 == "" {
-			httpx.Error(w, http.StatusBadRequest, "public_ipv4 required when provision_gifted_dns is true")
-			return
-		}
-		slug, err := provisioning.GiftedSubdomainFromIntendedURL(s)
-		if err != nil {
-			httpx.Error(w, http.StatusBadRequest, "intended_public_url must be https://www.{subdomain}."+provisioning.GiftedSubdomainApex)
-			return
-		}
-		if err := h.Provision.ClaimOrganization(r.Context(), orgID, slug, publicIPv4); err != nil {
-			var ce *provisioning.ClaimError
-			if errors.As(err, &ce) {
-				httpx.Error(w, ce.HTTPStatus, ce.Code)
-				return
-			}
-			httpx.Error(w, http.StatusInternalServerError, "provisioning_unavailable")
-			return
-		}
 	}
 
 	var runtimeOrigin *string

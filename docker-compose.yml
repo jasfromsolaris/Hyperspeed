@@ -74,17 +74,6 @@ services:
       CORS_ORIGIN: ${CORS_ORIGIN:-http://localhost:18080}
       # Same public origin as the browser (scheme + host; no path). Set when using HTTPS team URL.
       PUBLIC_API_BASE_URL: ${PUBLIC_API_BASE_URL:-}
-      # One-click default: bootstrap token exchange against Hyperspeed provisioning gateway.
-      # Keep install ID/secret empty unless an operator explicitly injects them.
-      PROVISIONING_BASE_URL: ${PROVISIONING_BASE_URL:-https://provision-gw.hyperspeedapp.com}
-      PROVISIONING_INSTALL_ID: ${PROVISIONING_INSTALL_ID:-}
-      PROVISIONING_INSTALL_SECRET: ${PROVISIONING_INSTALL_SECRET:-}
-      # Prefer Docker secrets or mounted files over env (Phase 1); paths are optional.
-      PROVISIONING_INSTALL_ID_FILE: ${PROVISIONING_INSTALL_ID_FILE:-}
-      PROVISIONING_INSTALL_SECRET_FILE: ${PROVISIONING_INSTALL_SECRET_FILE:-}
-      PROVISIONING_BOOTSTRAP_TOKEN: ${PROVISIONING_BOOTSTRAP_TOKEN:-}
-      PROVISIONING_BOOTSTRAP_GATEWAY_URL: ${PROVISIONING_BOOTSTRAP_GATEWAY_URL:-}
-      PROVISIONING_STATE_PATH: ${PROVISIONING_STATE_PATH:-/var/lib/hyperspeed/provisioning/state.json}
       PUBLIC_APP_URL: ${PUBLIC_APP_URL:-}
       UPSTREAM_GITHUB_REPO: ${UPSTREAM_GITHUB_REPO:-}
       UPDATE_MANIFEST_URL: ${UPDATE_MANIFEST_URL:-}
@@ -97,7 +86,6 @@ services:
       HS_GIT_WORKDIR_BASE: /var/lib/hyperspeed/git
     volumes:
       - gitwork:/var/lib/hyperspeed/git
-      - provisioning_state:/var/lib/hyperspeed/provisioning
     depends_on:
       postgres:
         condition: service_healthy
@@ -133,4 +121,3 @@ volumes:
   gitwork:
   caddy_data:
   caddy_config:
-  provisioning_state:
