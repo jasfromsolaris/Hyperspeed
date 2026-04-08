@@ -26,6 +26,17 @@ Hyperspeed supports **custom domains you control** (for example `app.customer.co
 5. **Web build**  
    Keep `VITE_API_URL` empty for same-origin `/api` calls when web and API share a host.
 
+## Hostinger Docker Manager (Traefik)
+
+[Hostinger’s Traefik template](https://www.hostinger.com/support/connecting-multiple-docker-compose-projects-using-traefik-in-hostinger-docker-manager/) listens on **80/443** and routes by hostname over a shared Docker network (`traefik-proxy`). Hyperspeed ships an optional Compose overlay **[docker-compose.traefik.yml](../../docker-compose.traefik.yml)** that attaches **Caddy** to that network and adds Traefik labels (`websecure` + `letsencrypt`, matching Hostinger’s defaults).
+
+1. Deploy Traefik from Hostinger’s catalog so the shared network exists (often **`traefik-proxy`**; check `docker network ls` and adjust **`docker-compose.traefik.yml`** if the name differs).
+2. Set **`HYPERSPEED_TRAEFIK_HOST`** in root **`.env`** to your public FQDN (see **[env.traefik.example](../../env.traefik.example)**).
+3. Set **`CORS_ORIGIN`**, **`PUBLIC_API_BASE_URL`**, and **`PUBLIC_APP_URL`** to **`https://<that-hostname>`** for production (`DEBUG=0`).
+4. Run: `docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d --build`
+
+If your Traefik uses different entrypoint or certificate resolver names than **`websecure`** / **`letsencrypt`**, edit the labels in **`docker-compose.traefik.yml`**.
+
 ## Reference Caddy host block
 
 ```caddy

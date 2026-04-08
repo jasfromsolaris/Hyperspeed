@@ -52,7 +52,8 @@ The open-source stack allows **at most one organization** in the database. The *
 | `CORS_ORIGIN` | Default `http://localhost:18080` in compose. When **`DEBUG=0`**, must match the **exact** browser origin (scheme + host + port). **Local Vite:** e.g. `http://localhost:5173` |
 | `PUBLIC_APP_URL` | Optional. Public HTTPS URL hint during onboarding (e.g. `https://hyperspeed.example.com`) |
 | `PUBLIC_API_BASE_URL` | Same scheme+host users use in the browser when the API must emit absolute URLs (see [custom domains doc](docs/ops/custom-domains-and-subdomains.md)) |
-| `CADDY_HTTP_PORT` | Host port mapped to Caddy’s **80** (default **18080**). |
+| `CADDY_HTTP_PORT` | Host port mapped to Caddy’s **80** (default **18080**). Use **`127.0.0.1:18080`** to bind Caddy only on loopback when using **[docker-compose.traefik.yml](docker-compose.traefik.yml)**. |
+| `HYPERSPEED_TRAEFIK_HOST` | FQDN for Traefik `Host()` routing when using **docker-compose.traefik.yml** (no scheme). |
 | `CADDY_EMAIL` | Used by Caddy global config; relevant if you add TLS site blocks later |
 
 With Docker, the web image is built with **`VITE_API_URL` empty**; the SPA calls **`/api/...` on the same origin** as the page (via Caddy). When **`DEBUG=0`**, **`CORS_ORIGIN`** must match that origin.
@@ -74,6 +75,23 @@ Details: **[docs/ops/self-host-updates.md](docs/ops/self-host-updates.md)**.
 Teams **always self-host** the stack. Use a domain you control and point DNS at your server, then terminate TLS on your edge or reverse proxy. Set `CORS_ORIGIN` and `PUBLIC_API_BASE_URL` to match the public HTTPS origin users open in the browser.
 
 See **[docs/ops/custom-domains-and-subdomains.md](docs/ops/custom-domains-and-subdomains.md)** for DNS, TLS, and validation steps.
+
+### Hostinger Docker Manager + Traefik
+
+If you use Hostinger’s **Traefik** template as the single entry on ports **80/443** ([Hostinger guide](https://www.hostinger.com/support/connecting-multiple-docker-compose-projects-using-traefik-in-hostinger-docker-manager/)):
+
+1. Deploy the Traefik project first so the external Docker network exists (often **`traefik-proxy`**; confirm with `docker network ls` and edit **`docker-compose.traefik.yml`** if yours differs).
+2. Add **`HYPERSPEED_TRAEFIK_HOST`** to your root **`.env`** (FQDN only, no `https://`), e.g. `www.team.example.com`. See **[env.traefik.example](env.traefik.example)**.
+3. Set **`CORS_ORIGIN`**, **`PUBLIC_API_BASE_URL`**, and optionally **`PUBLIC_APP_URL`** to **`https://<same FQDN>`** (with **`DEBUG=0`** in production).
+4. Start Hyperspeed with both compose files:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d --build
+```
+
+Labels in **[docker-compose.traefik.yml](docker-compose.traefik.yml)** assume Traefik entrypoint **`websecure`** and cert resolver **`letsencrypt`** (Hostinger’s defaults). Rename them in that file if your Traefik static config differs.
+
+To avoid exposing Caddy on the public host port, set **`CADDY_HTTP_PORT=127.0.0.1:18080`** in **`.env`** so only Traefik (on the shared Docker network) reaches Caddy; otherwise firewall **18080** if you leave the default mapping.
 
 ## Local development (without Docker for apps)
 

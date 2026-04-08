@@ -1,0 +1,30 @@
+# Overlay for Hostinger Docker Manager (or any Traefik that owns host 80/443).
+# Prerequisites:
+#   1. Deploy Hostinger's Traefik template so the external Docker network `traefik-proxy` exists.
+#   2. DNS A/AAAA for HYPERSPEED_TRAEFIK_HOST → this server's public IP.
+#   3. Set HYPERSPEED_TRAEFIK_HOST in .env (FQDN, no scheme).
+# Run: docker compose -f docker-compose.yml -f docker-compose.traefik.yml up -d --build
+#
+# Traefik labels match the common Hostinger pattern (websecure + letsencrypt). If your Traefik
+# uses different entrypoint or cert resolver names, adjust the labels below.
+#
+# Caddy still terminates HTTP inside the stack (/api → api, / → web). Traefik forwards TLS to
+# Caddy on the shared Docker network. Optionally set CADDY_HTTP_PORT=127.0.0.1:18080 in .env so
+# Caddy is not reachable from the public internet on the host port (Traefik uses the network).
+
+services:
+  caddy:
+    networks:
+      - default
+      - traefik-proxy
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=traefik-proxy
+      - "traefik.http.routers.hyperspeed.rule=Host(`${HYPERSPEED_TRAEFIK_HOST:?set HYPERSPEED_TRAEFIK_HOST in .env FQDN e.g. www.team.example.com}`)"
+      - traefik.http.routers.hyperspeed.entrypoints=websecure
+      - traefik.http.routers.hyperspeed.tls.certresolver=letsencrypt
+      - traefik.http.services.hyperspeed.loadbalancer.server.port=80
+
+networks:
+  traefik-proxy:
+    external: true
