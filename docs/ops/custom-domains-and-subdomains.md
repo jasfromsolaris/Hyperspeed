@@ -67,13 +67,13 @@ The SPA is designed to call `/api/...` on the **same origin** when built without
 - **Cloudflare API tokens** for the `hyperspeedapp.com` zone must live **only** on infrastructure Hyperspeed operates: the **control-plane** service (see below). They **must not** appear in customer `.env` for the open-source stack.
 - The **control-plane bearer token** must not appear in customer `.env` either. Hyperspeed runs a **provisioning gateway** (Cloudflare Worker) that holds that bearer and talks to the private control plane. The self-hosted API uses **`PROVISIONING_INSTALL_ID`** + **`PROVISIONING_INSTALL_SECRET`** to sign requests to the gateway (scoped to that install).
 
-### Provisioning service (operated by Hyperspeed)
+### Provisioning service (Hyperspeed-operated)
 
-Hyperspeed runs the provisioning gateway and private control plane outside this OSS repository. They validate install credentials, apply rate limits, and perform DNS changes for gifted subdomains.
+Hyperspeed runs the provisioning service outside the customer Docker stack. End users do not run this service and do not manage Cloudflare/control-plane secrets in their app environment.
 
 ### OSS API integration
 
-When the self-hosted API is configured with **`PROVISIONING_BASE_URL`**, **`PROVISIONING_INSTALL_ID`**, and **`PROVISIONING_INSTALL_SECRET`**, it exposes:
+When the self-hosted API is linked (normally via one-time **`PROVISIONING_BOOTSTRAP_TOKEN`** exchange), it exposes:
 
 - **`GET /api/v1/public/instance`** — `provisioning_enabled`, and when provisioning is enabled `provisioning_base_domain` is always `hyperspeedapp.com` (gifted DNS is `*.hyperspeedapp.com`). No secrets in the response.
 - **`POST /api/v1/provisioning/claim`** (authenticated) — signs and forwards `slug` and `ipv4` to `{PROVISIONING_BASE_URL}/v1/claims`. Stable error codes include `invalid_slug`, `invalid_ipv4`, `slug_taken`, `rate_limited`, `provisioning_unavailable`.
@@ -86,11 +86,6 @@ See [README_SELF_HOST.md](../../README_SELF_HOST.md).
 ### Operator or manual DNS
 
 If provisioning is **not** configured, use a **manual or internal** process: customer requests a subdomain; operator verifies IP and slug, creates the **A** record, and points them to this document for TLS and env vars. The technical steps match the automated path once DNS exists.
-
-### What stays out of the OSS repo
-
-- Provisioning gateway and control-plane implementation details.
-- Cloudflare API credentials and control-plane bearer credentials.
 
 ---
 

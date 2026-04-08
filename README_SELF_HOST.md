@@ -27,6 +27,18 @@ Open **[http://localhost:18080](http://localhost:18080)** (or **`http://YOUR_SER
 3. **No environment variables required** for the stack to start; default **HTTP on the host is port `18080`**. If that port is taken, set **`CADDY_HTTP_PORT`** in `.env` to another free port.
 4. **HTTPS** — The stock `Caddyfile` serves **HTTP** only. Put a reverse proxy or load balancer in front for TLS, or replace the `http://` block with a hostname + TLS (see [custom domains](docs/ops/custom-domains-and-subdomains.md)).
 
+### Hostinger one-click env import
+
+Use [`hostinger.env`](hostinger.env) for panel import. It contains only `KEY=value` lines (no comments), which avoids panels that misparse commented `.env.example` lines.
+
+- Import `hostinger.env` in the Docker Manager env UI.
+- Do not paste `.env.example` into panel env fields.
+- For Hyperspeed-hosted DNS linking, inject only:
+  - `PROVISIONING_BOOTSTRAP_TOKEN` (issued server-side by Hyperspeed provisioning control plane)
+  - `PROVISIONING_BASE_URL` (defaults to `https://provision-gw.hyperspeedapp.com`)
+
+After first successful API boot, install credentials are persisted at `PROVISIONING_STATE_PATH`, so subsequent restarts do not require another bootstrap token.
+
 ### Workspace limit (one organization per database)
 
 The open-source stack allows **at most one organization** in the database. The **first user** creates that workspace **during registration** (wizard); **additional people** join via **invites** or **open registration** with **admin approval** (configurable under workspace settings). If more than one org row exists (for example after a legacy migration), the API will not create additional orgs until only one remains (see server logs for a warning).
@@ -46,17 +58,19 @@ The open-source stack allows **at most one organization** in the database. The *
 
 With Docker, the web image is built with **`VITE_API_URL` empty**; the SPA calls **`/api/...` on the same origin** as the page (via Caddy). When **`DEBUG=0`**, **`CORS_ORIGIN`** must match that origin.
 
-### Hyperspeed-hosted subdomain (optional)
+### Hyperspeed-hosted subdomain (optional, bootstrap-token first)
 
-If Hyperspeed operates DNS for **`*.hyperspeedapp.com`**, Hyperspeed runs a **provisioning gateway** (edge service) that verifies **per-install HMAC** and talks to Hyperspeed’s **private control plane**. Your API never receives the control-plane bearer or Cloudflare tokens—only install-scoped credentials Hyperspeed gives you:
+If Hyperspeed operates DNS for **`*.hyperspeedapp.com`**, the primary one-click path is bootstrap exchange:
 
 | Variable | Role |
 |----------|------|
-| `PROVISIONING_BASE_URL` | HTTPS origin of the gateway (no path), e.g. `https://provision-gw.hyperspeedapp.com` |
-| `PROVISIONING_INSTALL_ID` | Install identifier; Hyperspeed stores the matching secret on the gateway |
-| `PROVISIONING_INSTALL_SECRET` | Shared secret used to sign requests to the gateway (not the control-plane bearer) |
+| `PROVISIONING_BOOTSTRAP_TOKEN` | One-time token injected by Hyperspeed/deploy pipeline; API exchanges it for install credentials at startup |
+| `PROVISIONING_BASE_URL` | Optional gateway origin override; default is `https://provision-gw.hyperspeedapp.com` |
+| `PROVISIONING_STATE_PATH` | Persisted credentials path after exchange (default `/var/lib/hyperspeed/provisioning/state.json`) |
 
-When all three are set, `GET /api/v1/public/instance` reports `provisioning_enabled: true` and `provisioning_base_domain: "hyperspeedapp.com"`. Authenticated users may call `POST /api/v1/provisioning/claim` during **first-time setup** (optional) or from workspace settings. Leave these unset if you only use BYO domains or manual DNS.
+When bootstrap succeeds, `GET /api/v1/public/instance` reports `provisioning_enabled: true` and `provisioning_base_domain: "hyperspeedapp.com"`. Authenticated users may call `POST /api/v1/provisioning/claim` during **first-time setup** (optional) or from workspace settings.
+
+Advanced fallback: you may still inject install-scoped `PROVISIONING_INSTALL_ID` + `PROVISIONING_INSTALL_SECRET` directly (env or mounted secret files), but this is not the default one-click path.
 
 ### Upgrading from older releases
 
