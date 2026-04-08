@@ -46,6 +46,8 @@ func main() {
 		slog.Error("provisioning bootstrap", "err", err)
 		os.Exit(1)
 	}
+	provRuntime := provisioning.NewRuntime()
+	provRuntime.Set(cfg.ProvisioningBaseURL, cfg.ProvisioningInstallID, cfg.ProvisioningInstallSecret)
 	if err := cfg.Validate(); err != nil {
 		slog.Error("config", "err", err)
 		os.Exit(1)
@@ -112,11 +114,15 @@ func main() {
 	}
 	_ = objStore.EnsureBucket(ctx)
 
+	statePath := strings.TrimSpace(cfg.ProvisioningStatePath)
+	if statePath == "" {
+		statePath = config.DefaultProvisioningStatePath
+	}
 	provH := &rest.ProvisionHandler{
-		Store:         st,
-		BaseURL:       cfg.ProvisioningBaseURL,
-		InstallID:     cfg.ProvisioningInstallID,
-		InstallSecret: cfg.ProvisioningInstallSecret,
+		Store:      st,
+		Runtime:    provRuntime,
+		StatePath:  statePath,
+		HTTPClient: nil,
 	}
 	orgH := &rest.OrgHandler{
 		Store:         st,
@@ -124,13 +130,11 @@ func main() {
 		Provision:     provH,
 	}
 	publicH := &rest.PublicHandler{
-		Store:                     st,
-		ProvisioningBaseURL:       cfg.ProvisioningBaseURL,
-		ProvisioningInstallID:     cfg.ProvisioningInstallID,
-		ProvisioningInstallSecret: cfg.ProvisioningInstallSecret,
-		UpstreamGitHubRepo:        cfg.UpstreamGitHubRepo,
-		UpdateManifestURL:         cfg.UpdateManifestURL,
-		PublicAppURL:              cfg.PublicAppURL,
+		Store:              st,
+		Provisioning:       provRuntime,
+		UpstreamGitHubRepo: cfg.UpstreamGitHubRepo,
+		UpdateManifestURL:  cfg.UpdateManifestURL,
+		PublicAppURL:       cfg.PublicAppURL,
 	}
 	signupReqH := &rest.SignupRequestHandler{Store: st}
 	projH := &rest.SpaceHandler{Store: st, Bus: bus}
@@ -288,6 +292,7 @@ func main() {
 			r.Post("/auth/logout", authSvc.Logout)
 			r.Post("/invites/{token}/accept", inviteH.Accept)
 			r.Post("/presence/ping", presenceH.Ping)
+			r.With(httprate.Limit(5, time.Minute)).Post("/provisioning/apply-bootstrap-token", provH.ApplyBootstrapToken)
 			r.Post("/provisioning/claim", provH.Claim)
 			r.Delete("/provisioning/claim/{slug}", provH.DeleteClaim)
 

@@ -182,6 +182,30 @@ export default function OrgSettingsPage() {
     lines: string[];
   } | null>(null);
 
+  const [bootstrapToken, setBootstrapToken] = useState("");
+
+  const applyBootstrap = useMutation({
+    mutationFn: async (token: string) => {
+      const res = await apiFetch("/api/v1/provisioning/apply-bootstrap-token", {
+        method: "POST",
+        json: { bootstrap_token: token },
+      });
+      if (res.status === 409) {
+        await qc.invalidateQueries({ queryKey: ["public-instance"] });
+        return { already_linked: true as const };
+      }
+      if (!res.ok) {
+        const j = (await res.json().catch(() => ({}))) as { error?: string };
+        throw new Error(j.error || "bootstrap failed");
+      }
+      return (await res.json()) as { ok?: boolean; provisioning_enabled?: boolean };
+    },
+    onSuccess: () => {
+      setBootstrapToken("");
+      void qc.invalidateQueries({ queryKey: ["public-instance"] });
+    },
+  });
+
   const patchOrg = useMutation({
     mutationFn: async (body: {
       intended_public_url: string | null;
@@ -483,17 +507,56 @@ export default function OrgSettingsPage() {
                       ) : null}
                     </>
                   ) : (
-                    <div className="rounded-sm border border-border bg-muted/20 p-3 text-xs leading-relaxed text-muted-foreground">
+                    <div className="space-y-3 rounded-sm border border-border bg-muted/20 p-3 text-xs leading-relaxed text-muted-foreground">
                       <p className="text-foreground">
                         <strong className="font-medium text-foreground">Hyperspeed-hosted DNS</strong>{" "}
                         (one-step <strong className="font-medium text-foreground">Save URL &amp; DNS</strong>)
                         appears when this server is linked to Hyperspeed&apos;s provisioning service.
                         Until then you only need <strong className="font-medium text-foreground">Save URL</strong>.
                       </p>
-                      <p className="mt-2">
+                      <p>
                         You can still save your team URL here. For your own domain, add DNS at your
-                        provider; reload this page after your host finishes linking the install.
+                        provider.
                       </p>
+                      <div className="rounded-sm border border-dashed border-border bg-background/50 p-3">
+                        <p className="text-[11px] font-medium text-foreground">
+                          Link this server (org admin)
+                        </p>
+                        <p className="mt-1 text-[11px] text-muted-foreground">
+                          Paste the one-time bootstrap token from Hyperspeed, then Apply. No Docker
+                          restart required.
+                        </p>
+                        <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center">
+                          <input
+                            type="password"
+                            autoComplete="off"
+                            className="min-w-0 flex-1 rounded-sm border border-input bg-background px-2 py-1.5 font-mono text-[11px]"
+                            placeholder="Bootstrap token"
+                            value={bootstrapToken}
+                            onChange={(e) => setBootstrapToken(e.target.value)}
+                            disabled={applyBootstrap.isPending}
+                          />
+                          <button
+                            type="button"
+                            className="shrink-0 rounded-sm bg-primary px-3 py-1.5 text-[11px] font-medium text-primary-foreground disabled:opacity-50"
+                            disabled={
+                              applyBootstrap.isPending || !bootstrapToken.trim()
+                            }
+                            onClick={() =>
+                              applyBootstrap.mutate(bootstrapToken.trim())
+                            }
+                          >
+                            {applyBootstrap.isPending ? "Applying…" : "Apply token"}
+                          </button>
+                        </div>
+                        {applyBootstrap.isError ? (
+                          <p className="mt-2 text-[11px] text-destructive">
+                            {applyBootstrap.error instanceof Error
+                              ? applyBootstrap.error.message
+                              : "Failed"}
+                          </p>
+                        ) : null}
+                      </div>
                     </div>
                   )}
                 </div>

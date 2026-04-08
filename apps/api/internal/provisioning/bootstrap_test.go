@@ -64,6 +64,40 @@ func TestExchangeBootstrapIfNeeded_WritesState(t *testing.T) {
 	}
 }
 
+func TestPerformBootstrapExchange_WritesState(t *testing.T) {
+	dir := t.TempDir()
+	statePath := filepath.Join(dir, "state.json")
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/bootstrap" || r.Method != http.MethodPost {
+			http.NotFound(w, r)
+			return
+		}
+		auth := r.Header.Get("Authorization")
+		if auth != "Bearer tok2" {
+			http.Error(w, "auth", http.StatusUnauthorized)
+			return
+		}
+		_ = json.NewEncoder(w).Encode(map[string]string{
+			"provisioning_base_url":       "https://gw2.example.com",
+			"provisioning_install_id":     "inst2",
+			"provisioning_install_secret": "sec2",
+		})
+	}))
+	defer srv.Close()
+
+	t.Setenv("PROVISIONING_BOOTSTRAP_GATEWAY_URL", srv.URL)
+	t.Cleanup(func() { _ = os.Unsetenv("PROVISIONING_BOOTSTRAP_GATEWAY_URL") })
+
+	base, id, sec, err := PerformBootstrapExchange(context.Background(), "tok2", statePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if base != "https://gw2.example.com" || id != "inst2" || sec != "sec2" {
+		t.Fatalf("returns: %s %s %s", base, id, sec)
+	}
+}
+
 func TestExchangeBootstrapIfNeeded_NoOpWhenProvisioned(t *testing.T) {
 	cfg := config.Config{
 		ProvisioningBootstrapToken: "x",

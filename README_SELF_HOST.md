@@ -44,6 +44,8 @@ The repository root **[`.env`](.env)** is the only env template: `KEY=value` lin
 
 After a successful bootstrap, install credentials are persisted at `PROVISIONING_STATE_PATH`, so later restarts do not need a new bootstrap token.
 
+**In-app linking (no env, no restart):** an **org admin** can paste the one-time bootstrap token under **Workspace settings → Team URL** when automatic DNS is unavailable. The API calls `POST /api/v1/provisioning/apply-bootstrap-token`, persists the same state file, and turns on **Save URL & DNS** immediately without restarting Docker.
+
 ### Workspace limit (one organization per database)
 
 The open-source stack allows **at most one organization** in the database. The **first user** creates that workspace **during registration** (wizard); **additional people** join via **invites** or **open registration** with **admin approval** (configurable under workspace settings). If more than one org row exists (for example after a legacy migration), the API will not create additional orgs until only one remains (see server logs for a warning).

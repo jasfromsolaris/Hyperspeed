@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
+	"hyperspeed/api/internal/config"
 	"hyperspeed/api/internal/ctxkey"
 	"hyperspeed/api/internal/httpx"
 	"hyperspeed/api/internal/provisioning"
@@ -23,11 +24,11 @@ import (
 // ProvisionHandler forwards gifted-subdomain claims to the Hyperspeed-operated provisioning gateway
 // (Cloudflare Worker), which authenticates install HMAC and proxies to the private control plane.
 type ProvisionHandler struct {
-	Store         *store.Store
-	BaseURL       string // public gateway origin, e.g. https://provision-gw.hyperspeedapp.com (no trailing path)
-	InstallID     string
-	InstallSecret string
-	HTTPClient    *http.Client
+	Store *store.Store
+	// Runtime holds the active gateway URL and install credentials (hot-reloaded after apply-bootstrap-token).
+	Runtime   *provisioning.Runtime
+	StatePath string // persisted JSON path; empty uses config default
+	HTTPClient *http.Client
 }
 
 type claimBody struct {
@@ -48,9 +49,7 @@ func (h *ProvisionHandler) Configured() bool {
 }
 
 func (h *ProvisionHandler) configured() bool {
-	return strings.TrimSpace(h.BaseURL) != "" &&
-		strings.TrimSpace(h.InstallID) != "" &&
-		strings.TrimSpace(h.InstallSecret) != ""
+	return h.Runtime != nil && h.Runtime.Configured()
 }
 
 // postClaimAndSetOrg POSTs to the control plane and sets gifted_subdomain_slug on success.
@@ -58,7 +57,8 @@ func (h *ProvisionHandler) postClaimAndSetOrg(ctx context.Context, orgID uuid.UU
 	if !h.configured() {
 		return 0, nil, provisioning.ErrProvisioningUnavailable()
 	}
-	status, body, netErr := provisioning.PostClaims(ctx, h.BaseURL, h.InstallID, h.InstallSecret, h.httpClient(), slug, ipv4)
+	base, id, secret := h.Runtime.Snapshot()
+	status, body, netErr := provisioning.PostClaims(ctx, base, id, secret, h.httpClient(), slug, ipv4)
 	if err := provisioning.ErrFromClaimResponse(status, body, netErr); err != nil {
 		return 0, nil, err
 	}
@@ -160,7 +160,8 @@ func (h *ProvisionHandler) DeleteClaim(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp, respBody, netErr := provisioning.DeleteGatewayClaim(r.Context(), h.BaseURL, h.InstallID, h.InstallSecret, h.httpClient(), slugStr)
+	base, id, secret := h.Runtime.Snapshot()
+	resp, respBody, netErr := provisioning.DeleteGatewayClaim(r.Context(), base, id, secret, h.httpClient(), slugStr)
 	if netErr != nil {
 		httpx.Error(w, http.StatusBadGateway, "provisioning_unavailable")
 		return
@@ -188,13 +189,75 @@ func (h *ProvisionHandler) DeleteClaim(w http.ResponseWriter, r *http.Request) {
 	httpx.Error(w, http.StatusBadGateway, "provisioning_unavailable")
 }
 
+type applyBootstrapBody struct {
+	BootstrapToken string `json:"bootstrap_token"`
+}
+
+// ApplyBootstrapToken POST /api/v1/provisioning/apply-bootstrap-token — org.manage; body { bootstrap_token }.
+// Exchanges the one-time token with the gateway, persists state, and updates Runtime without restarting the process.
+func (h *ProvisionHandler) ApplyBootstrapToken(w http.ResponseWriter, r *http.Request) {
+	if h.Runtime == nil {
+		httpx.Error(w, http.StatusServiceUnavailable, "provisioning_unavailable")
+		return
+	}
+	if h.Runtime.Configured() {
+		httpx.JSON(w, http.StatusConflict, map[string]any{
+			"error":                 "already_linked",
+			"provisioning_enabled": true,
+		})
+		return
+	}
+	uid, ok := ctxkey.UserID(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if h.Store == nil {
+		httpx.Error(w, http.StatusInternalServerError, "provisioning_unavailable")
+		return
+	}
+	var body applyBootstrapBody
+	if err := httpx.DecodeJSON(r, &body); err != nil {
+		httpx.Error(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	tok := strings.TrimSpace(body.BootstrapToken)
+	if tok == "" {
+		httpx.Error(w, http.StatusBadRequest, "bootstrap_token required")
+		return
+	}
+
+	orgs, err := h.Store.ListOrganizationsForUser(r.Context(), uid)
+	if err != nil || len(orgs) == 0 {
+		httpx.Error(w, http.StatusForbidden, "no organization")
+		return
+	}
+	orgID := orgs[0].ID
+	if !requireOrgPerm(w, r, h.Store, orgID, uid, rbac.OrgManage) {
+		return
+	}
+
+	statePath := strings.TrimSpace(h.StatePath)
+	if statePath == "" {
+		statePath = config.DefaultProvisioningStatePath
+	}
+	base, id, secret, err := provisioning.PerformBootstrapExchange(r.Context(), tok, statePath)
+	if err != nil {
+		httpx.Error(w, http.StatusBadRequest, "bootstrap_failed")
+		return
+	}
+	h.Runtime.Set(base, id, secret)
+	httpx.JSON(w, http.StatusOK, map[string]any{
+		"ok":                   true,
+		"provisioning_enabled": true,
+	})
+}
+
 // PublicHandler exposes non-secret instance metadata for the SPA.
 type PublicHandler struct {
 	Store *store.Store
-	// Provisioning gateway URL + install credentials enable POST /api/v1/provisioning/claim and related flows.
-	ProvisioningBaseURL       string
-	ProvisioningInstallID     string
-	ProvisioningInstallSecret string
+	// Provisioning holds gateway URL + install credentials for instance metadata (same Runtime as ProvisionHandler).
+	Provisioning *provisioning.Runtime
 	// UpstreamGitHubRepo is optional "owner/name" for SPA update checks against GitHub releases.
 	UpstreamGitHubRepo string
 	// UpdateManifestURL is optional HTTPS URL to a static JSON manifest for update checks.
@@ -205,9 +268,7 @@ type PublicHandler struct {
 
 // Instance GET /api/v1/public/instance
 func (h *PublicHandler) Instance(w http.ResponseWriter, r *http.Request) {
-	prov := strings.TrimSpace(h.ProvisioningBaseURL) != "" &&
-		strings.TrimSpace(h.ProvisioningInstallID) != "" &&
-		strings.TrimSpace(h.ProvisioningInstallSecret) != ""
+	prov := h.Provisioning != nil && h.Provisioning.Configured()
 	out := map[string]any{
 		"provisioning_enabled": prov,
 		"version":              version.Version,
