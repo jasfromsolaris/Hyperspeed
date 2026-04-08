@@ -5,13 +5,25 @@ alwaysApply: true
 
 # Public vs private Git remotes
 
-This workspace is the **private superset** (`HyperSpeedPrivate` or equivalent). The repo **[jasfromsolaris/Hyperspeed](https://github.com/jasfromsolaris/Hyperspeed)** is the **OSS subset** and must not receive a naive `git push` of `main` from here (it would publish paths that belong only in the private repo).
+**End users and QA “like a customer”:** clone, configure, and build from **[jasfromsolaris/Hyperspeed](https://github.com/jasfromsolaris/Hyperspeed)** (`main`) only — not from the private monorepo. That is the supported OSS install path.
+
+This workspace is often the **private superset** (`HyperSpeedPrivate`). That remote must not be pushed wholesale to the OSS URL (it would publish paths that belong only in the private repo).
+
+## Publishing OSS updates (maintainers)
+
+To ship app changes to the public repo:
+
+1. Branch from **`public/main`**: `git fetch public && git checkout -B publish-oss public/main`
+2. **Cherry-pick** only commits that touch OSS-safe paths (e.g. `apps/api`, `apps/web`, docs, hooks — never a blind merge of private `main`).
+3. Run tests for touched packages, then push:  
+   `HYPERSPEED_PUBLIC_PUSH_OK=1 git push public publish-oss:main`
+
+Never use `git merge private/main -s ours` + push to public as a “sync” — that still pushed the **full private tree** once.
 
 ## Agent / operator rules
 
-- **Do not** run `git push public …` or push to `https://github.com/jasfromsolaris/Hyperspeed.git` unless the user explicitly asked to publish an **OSS-only** export and has verified the tree (or uses their documented export workflow).
-- **Do not** suggest `git merge public/main -s ours` + push to public as a “sync” — that still pushes the **full private tree**.
-- If the user needs GitHub updated for the OSS repo, they must use a **dedicated OSS branch / export / filter-repo** process they own — not a direct push of private `main`.
+- **Do not** run `git push public …` unless the user asked to **publish OSS** and commits are **cherry-picked** onto `public/main` (or an equivalent verified export), not a push of private `main`.
+- **Do not** tell users to “build from private” for normal self-hosting; say **build from public** after the relevant commits exist on `public/main`.
 
 ## Local enforcement
 
