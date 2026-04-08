@@ -1,0 +1,50 @@
+#!/bin/sh
+# Block accidental git push to the public OSS Hyperspeed repo (private superset must not land there).
+# Enable hooks: from repo root run  scripts/setup-git-hooks.ps1  or  scripts/setup-git-hooks.sh
+#
+# Intentional publish after an OSS-only export:  HYPERSPEED_PUBLIC_PUSH_OK=1 git push public <ref>
+
+set -e
+
+remote="$1"
+url="$2"
+
+if [ -n "${HYPERSPEED_PUBLIC_PUSH_OK:-}" ]; then
+	exit 0
+fi
+
+# Always allow pushes to the private GitHub remote for this workspace.
+case "$url" in
+	*HyperSpeedPrivate*|*hyper-speed-private*|*hyperspeed-private*)
+		exit 0
+		;;
+esac
+
+# Public OSS remote URL (HTTPS or SSH).
+blocked=0
+case "$url" in
+	*github.com/jasfromsolaris/Hyperspeed.git|*github.com/jasfromsolaris/Hyperspeed)
+		blocked=1
+		;;
+	*@github.com:jasfromsolaris/Hyperspeed.git|*@github.com:jasfromsolaris/Hyperspeed)
+		blocked=1
+		;;
+esac
+
+# Usual alias for the OSS remote in this repo — block even if URL was renamed oddly.
+if [ "$remote" = "public" ]; then
+	blocked=1
+fi
+
+if [ "$blocked" -eq 0 ]; then
+	exit 0
+fi
+
+echo "" >&2
+echo "Refusing git push: target is the public OSS Hyperspeed repo (or remote named 'public')." >&2
+echo "This repository is the private superset; pushing from here can publish paths that must stay private." >&2
+echo "" >&2
+echo "Fix: use your OSS export / publish branch workflow, or only after verifying the tree run:" >&2
+echo "  HYPERSPEED_PUBLIC_PUSH_OK=1 git push <remote> <ref>" >&2
+echo "" >&2
+exit 1

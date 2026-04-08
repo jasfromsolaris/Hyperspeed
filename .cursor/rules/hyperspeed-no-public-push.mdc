@@ -1,0 +1,18 @@
+---
+description: Never push private HyperSpeedPrivate tree to public Hyperspeed OSS remote
+alwaysApply: true
+---
+
+# Public vs private Git remotes
+
+This workspace is the **private superset** (`HyperSpeedPrivate` or equivalent). The repo **[jasfromsolaris/Hyperspeed](https://github.com/jasfromsolaris/Hyperspeed)** is the **OSS subset** and must not receive a naive `git push` of `main` from here (it would publish paths that belong only in the private repo).
+
+## Agent / operator rules
+
+- **Do not** run `git push public …` or push to `https://github.com/jasfromsolaris/Hyperspeed.git` unless the user explicitly asked to publish an **OSS-only** export and has verified the tree (or uses their documented export workflow).
+- **Do not** suggest `git merge public/main -s ours` + push to public as a “sync” — that still pushes the **full private tree**.
+- If the user needs GitHub updated for the OSS repo, they must use a **dedicated OSS branch / export / filter-repo** process they own — not a direct push of private `main`.
+
+## Local enforcement
+
+After `scripts/setup-git-hooks.ps1` or `scripts/setup-git-hooks.sh`, **pre-push** blocks pushes to the public Hyperspeed URL and to any remote named `public`, unless `HYPERSPEED_PUBLIC_PUSH_OK=1` is set.
