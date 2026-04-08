@@ -27,6 +27,20 @@ Put **`CLOUDFLARE_API_TOKEN`** and **`CLOUDFLARE_ZONE_ID`** only here (env vars 
 - `DELETE /v1/claims/{slug}` — remove DNS record (Bearer auth)
 - `POST /v1/installs/bootstrap-token` — issues one-time bootstrap token for customer API auto-bootstrap (Bearer auth)
 
+## Issue a customer bootstrap token (operator)
+
+1. Set **`CONTROL_PLANE_PUBLIC_URL`** in `apps/control-plane/.env` to the HTTPS URL of your **deployed** control plane (no trailing slash), e.g. `https://your-service.onrender.com`. You already have **`CONTROL_PLANE_BEARER_TOKEN`** and **`WORKER_ADMIN_TOKEN`** there for the service itself.
+2. From the repo root (or `apps/control-plane`):
+
+   - **Windows:** `.\apps\control-plane\scripts\issue-bootstrap-token.ps1`
+   - **macOS/Linux:** `./apps/control-plane/scripts/issue-bootstrap-token.sh` (may need `chmod +x`)
+
+The script loads `.env`, calls `POST /v1/installs/bootstrap-token` on your control plane, and prints **`provisioning_bootstrap_token`** for the customer (paste in Workspace settings or `PROVISIONING_BOOTSTRAP_TOKEN`).
+
+If **`CONTROL_PLANE_PUBLIC_URL`** is unset, the script falls back to calling the Worker’s `POST /v1/admin/bootstrap-token` directly using **`WORKER_ADMIN_URL`** + **`WORKER_ADMIN_TOKEN`** (same secrets as in your env file).
+
+Optional: `-TtlSec` / `TTL_SEC=1800`, `-InstallId` / `INSTALL_ID=...`.
+
 ## Run locally
 
 ```bash
