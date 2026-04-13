@@ -59,6 +59,19 @@ func AgentToolSpecs() []map[string]any {
 			},
 		},
 		{
+			"name":        "space.folder.create",
+			"description": "Create a new empty folder under a parent folder in a space (omit parent_id for space root)",
+			"inputSchema": map[string]any{
+				"type": "object",
+				"properties": map[string]any{
+					"space_id":  map[string]any{"type": "string"},
+					"parent_id": map[string]any{"type": "string", "description": "Optional folder node UUID; omit for root"},
+					"name":      map[string]any{"type": "string", "description": "Folder name (no path separators)"},
+				},
+				"required": []string{"space_id", "name"},
+			},
+		},
+		{
 			"name":        "space.chat.read_recent",
 			"description": "Read recent non-deleted chat messages in a room (explicit IDE/MCP context bridge)",
 			"inputSchema": map[string]any{

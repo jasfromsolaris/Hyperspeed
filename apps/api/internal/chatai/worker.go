@@ -271,11 +271,14 @@ func (w *Worker) handleOpenRouter(ctx context.Context, req events.ChatAIMentionR
 	var msgs []cursor.Message
 	if useTools {
 		msgs, err = w.BuildStaffMessagesWithOptions(ctx, req, src, history, StaffMessageOptions{
-			ToolsEnabled: true,
-			SkipPreread:  w.ORTooling.SkipPreread,
+			ToolsEnabled:                 true,
+			SkipPreread:                  w.ORTooling.SkipPreread,
+			IncludeStaffProfileAndMemory: true,
 		})
 	} else {
-		msgs, err = w.BuildStaffMessages(ctx, req, src, history)
+		msgs, err = w.BuildStaffMessagesWithOptions(ctx, req, src, history, StaffMessageOptions{
+			IncludeStaffProfileAndMemory: true,
+		})
 	}
 	if err != nil {
 		slog.Error("build staff context", "err", err)
@@ -405,6 +408,7 @@ func (w *Worker) handleOpenRouter(ctx context.Context, req events.ChatAIMentionR
 	if err := w.Store.MarkChatAIMentionReplyResponded(ctx, req.SourceMessageID, req.AIUserID, msg.ID, runDetailForMark); err != nil {
 		return err
 	}
+	w.spawnOpenRouterMemoryPersist(req, sa, model, apiKey, src, msg)
 	return w.publishChatMessage(ctx, req, msg)
 }
 

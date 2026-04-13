@@ -31,6 +31,8 @@ type StaffMessageOptions struct {
 	ToolsEnabled bool
 	// SkipPreread skips bulk file injection (saves tokens when the model can call space.file.read).
 	SkipPreread bool
+	// IncludeStaffProfileAndMemory injects latest profile and retrieved memory into system prompt.
+	IncludeStaffProfileAndMemory bool
 }
 
 func decodeSecretsKey(b64 string) ([]byte, error) {
@@ -90,13 +92,18 @@ func (w *Worker) BuildStaffMessagesWithOptions(ctx context.Context, req events.C
 	if len(srcLine) > 2000 {
 		srcLine = srcLine[:2000] + "…"
 	}
+	profileBlock := ""
+	memoryBlock := ""
+	if opt.IncludeStaffProfileAndMemory {
+		profileBlock, memoryBlock = w.profileAndMemoryContext(ctx, req.OrganizationID, req.AIUserID, srcLine)
+	}
 
 	sys := strings.Builder{}
 	sys.WriteString("You are the designated AI staff member in a Hyperspeed organization chat. ")
 	sys.WriteString("Reply helpfully and concisely in Markdown. ")
 	if opt.ToolsEnabled {
-		sys.WriteString("You have tools: read/list space files, read recent chat, create new text files, and propose edits to existing files (proposals require human acceptance in the web UI). ")
-		sys.WriteString("Prefer space.file.propose_patch for changing existing files; use space.file.create_text for new files. After a successful propose_patch, briefly confirm the change; the UI shows an inline diff card in chat for accept/reject. ")
+		sys.WriteString("You have tools: read/list space files, read recent chat, create new folders (space.folder.create), create new text files (space.file.create_text), and propose edits to existing files (proposals require human acceptance in the web UI). ")
+		sys.WriteString("Prefer space.file.propose_patch for changing existing files; use space.folder.create when you need a directory before adding files. After a successful propose_patch, briefly confirm the change; the UI shows an inline diff card in chat for accept/reject. ")
 		sys.WriteString("Web search and datetime may be available via OpenRouter when relevant.\n")
 	} else {
 		sys.WriteString("You only have read-only file excerpts from this space; you cannot run tools from here.\n")
@@ -106,6 +113,14 @@ func (w *Worker) BuildStaffMessagesWithOptions(ctx context.Context, req events.C
 	if refBlock != "" {
 		sys.WriteString("\n--- User-referenced files (prioritize these) ---\n")
 		sys.WriteString(refBlock)
+	}
+	if profileBlock != "" {
+		sys.WriteString("\n--- Staff profile (instructions) ---\n")
+		sys.WriteString(profileBlock)
+	}
+	if memoryBlock != "" {
+		sys.WriteString("\n--- Long-term memory ---\n")
+		sys.WriteString(memoryBlock)
 	}
 	if fileBlock != "" {
 		sys.WriteString("\n--- Read-only file context ---\n")

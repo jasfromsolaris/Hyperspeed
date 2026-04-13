@@ -181,6 +181,49 @@ export interface ServiceAccountProfileVersion {
   created_at: string;
 }
 
+export interface StaffMemoryEpisode {
+  id: UUID;
+  organization_id: UUID;
+  service_account_id: UUID;
+  space_id?: UUID | null;
+  chat_room_id?: UUID | null;
+  source_message_id?: UUID | null;
+  reply_message_id?: UUID | null;
+  summary: string;
+  details: string;
+  importance: number;
+  created_at: string;
+  deleted_at?: string | null;
+}
+
+export interface StaffMemoryFact {
+  id: UUID;
+  organization_id: UUID;
+  service_account_id: UUID;
+  episode_id?: UUID | null;
+  source_message_id?: UUID | null;
+  statement: string;
+  confidence: number;
+  created_at: string;
+  valid_until?: string | null;
+  invalidated_at?: string | null;
+}
+
+export type ServiceAccountProfileProposalStatus = "pending" | "accepted" | "rejected";
+
+export interface ServiceAccountProfileProposal {
+  id: UUID;
+  organization_id: UUID;
+  service_account_id: UUID;
+  source_message_id?: UUID | null;
+  proposed_append_md: string;
+  status: ServiceAccountProfileProposalStatus;
+  created_by?: UUID | null;
+  created_at: string;
+  resolved_at?: string | null;
+  resolved_by?: UUID | null;
+}
+
 export type FileEditProposalStatus = "pending" | "accepted" | "rejected";
 
 export interface FileEditProposal {

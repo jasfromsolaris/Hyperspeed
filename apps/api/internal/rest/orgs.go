@@ -99,6 +99,38 @@ func (h *OrgHandler) Get(w http.ResponseWriter, r *http.Request) {
 	httpx.JSON(w, http.StatusOK, o)
 }
 
+// MyPermissions returns the current user's effective RBAC permission strings for this org.
+// Any org member may call this (RequireOrgMember); used by the web UI for navigation.
+func (h *OrgHandler) MyPermissions(w http.ResponseWriter, r *http.Request) {
+	orgID, ok := middleware.OrgIDFromContext(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusBadRequest, "missing org")
+		return
+	}
+	uid, ok := ctxkey.UserID(r.Context())
+	if !ok {
+		httpx.Error(w, http.StatusUnauthorized, "unauthorized")
+		return
+	}
+	if err := h.Store.EnsureSystemRoles(r.Context(), orgID); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "permissions")
+		return
+	}
+	if err := h.Store.EnsureLegacyRoleMapped(r.Context(), orgID, uid); err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "permissions")
+		return
+	}
+	perms, err := h.Store.MemberEffectivePermissions(r.Context(), orgID, uid)
+	if err != nil {
+		httpx.Error(w, http.StatusInternalServerError, "permissions")
+		return
+	}
+	if perms == nil {
+		perms = []string{}
+	}
+	httpx.JSON(w, http.StatusOK, map[string]any{"permissions": perms})
+}
+
 func (h *OrgHandler) Patch(w http.ResponseWriter, r *http.Request) {
 	orgID, ok := middleware.OrgIDFromContext(r.Context())
 	if !ok {

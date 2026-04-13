@@ -117,7 +117,12 @@ services:
 
 volumes:
   pgdata:
+    name: hyperspeed_pgdata
   miniodata:
+    name: hyperspeed_miniodata
   gitwork:
+    name: hyperspeed_gitwork
   caddy_data:
+    name: hyperspeed_caddy_data
   caddy_config:
+    name: hyperspeed_caddy_config

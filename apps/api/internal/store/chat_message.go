@@ -182,6 +182,9 @@ func (s *Store) SoftDeleteChatMessage(ctx context.Context, projectID, chatRoomID
 		return false, err
 	}
 	if tag.RowsAffected() > 0 {
+		if err := s.CascadeDeleteMemoryForChatMessage(ctx, messageID); err != nil {
+			return false, err
+		}
 		return true, nil
 	}
 	// Remove any message in this room (AI, other members, NULL author). REST requires ChatWrite + space membership.
@@ -197,7 +200,13 @@ func (s *Store) softDeleteChatMessageModerator(ctx context.Context, projectID, c
 	if err != nil {
 		return false, err
 	}
-	return tag.RowsAffected() > 0, nil
+	if tag.RowsAffected() > 0 {
+		if err := s.CascadeDeleteMemoryForChatMessage(ctx, messageID); err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	return false, nil
 }
 
 func (s *Store) AddReaction(ctx context.Context, messageID, userID uuid.UUID, emoji string) (ChatMessageReaction, error) {

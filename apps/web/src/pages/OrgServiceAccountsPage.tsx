@@ -13,8 +13,11 @@ import {
 import type {
   Role,
   ServiceAccount,
+  ServiceAccountProfileProposal,
   ServiceAccountProfileVersion,
   ServiceAccountProvider,
+  StaffMemoryEpisode,
+  StaffMemoryFact,
   UUID,
 } from "../api/types";
 
@@ -198,6 +201,42 @@ export default function OrgServiceAccountsPage() {
     },
   });
 
+  const memoryEpisodesQ = useQuery({
+    queryKey: ["sa-memory-episodes", orgId, selectedSA],
+    enabled: !!orgId && !!selectedSA,
+    queryFn: async () => {
+      const res = await apiFetch(
+        `/api/v1/organizations/${orgId}/service-accounts/${selectedSA}/memory/episodes`,
+      );
+      if (!res.ok) throw new Error("episodes");
+      return res.json() as Promise<{ episodes: StaffMemoryEpisode[] }>;
+    },
+  });
+
+  const memoryFactsQ = useQuery({
+    queryKey: ["sa-memory-facts", orgId, selectedSA],
+    enabled: !!orgId && !!selectedSA,
+    queryFn: async () => {
+      const res = await apiFetch(
+        `/api/v1/organizations/${orgId}/service-accounts/${selectedSA}/memory/facts`,
+      );
+      if (!res.ok) throw new Error("facts");
+      return res.json() as Promise<{ facts: StaffMemoryFact[] }>;
+    },
+  });
+
+  const profileProposalsQ = useQuery({
+    queryKey: ["sa-profile-proposals", orgId, selectedSA],
+    enabled: !!orgId && !!selectedSA,
+    queryFn: async () => {
+      const res = await apiFetch(
+        `/api/v1/organizations/${orgId}/service-accounts/${selectedSA}/profile/proposals?status=pending`,
+      );
+      if (!res.ok) throw new Error("profile proposals");
+      return res.json() as Promise<{ proposals: ServiceAccountProfileProposal[] }>;
+    },
+  });
+
   /** Saved profile text, or default template when latest version is blank (e.g. empty v1). */
   const profileDisplayMd = useMemo(() => {
     const p = profileQ.data;
@@ -327,6 +366,60 @@ export default function OrgServiceAccountsPage() {
       setProfileTouched(false);
       void qc.invalidateQueries({ queryKey: ["sa-profile", orgId, selectedSA] });
       void qc.invalidateQueries({ queryKey: ["sa-profile-versions", orgId, selectedSA] });
+    },
+  });
+
+  const deleteEpisodeM = useMutation({
+    mutationFn: async (episodeID: UUID) => {
+      const res = await apiFetch(
+        `/api/v1/organizations/${orgId}/service-accounts/${selectedSA}/memory/episodes/${episodeID}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) throw new Error("delete episode");
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["sa-memory-episodes", orgId, selectedSA] });
+    },
+  });
+
+  const deleteFactM = useMutation({
+    mutationFn: async (factID: UUID) => {
+      const res = await apiFetch(
+        `/api/v1/organizations/${orgId}/service-accounts/${selectedSA}/memory/facts/${factID}`,
+        { method: "DELETE" },
+      );
+      if (!res.ok) throw new Error("delete fact");
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["sa-memory-facts", orgId, selectedSA] });
+    },
+  });
+
+  const acceptProfileProposalM = useMutation({
+    mutationFn: async (proposalID: UUID) => {
+      const res = await apiFetch(
+        `/api/v1/organizations/${orgId}/service-accounts/${selectedSA}/profile/proposals/${proposalID}/accept`,
+        { method: "POST" },
+      );
+      if (!res.ok) throw new Error("accept proposal");
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["sa-profile-proposals", orgId, selectedSA] });
+      void qc.invalidateQueries({ queryKey: ["sa-profile", orgId, selectedSA] });
+      void qc.invalidateQueries({ queryKey: ["sa-profile-versions", orgId, selectedSA] });
+    },
+  });
+
+  const rejectProfileProposalM = useMutation({
+    mutationFn: async (proposalID: UUID) => {
+      const res = await apiFetch(
+        `/api/v1/organizations/${orgId}/service-accounts/${selectedSA}/profile/proposals/${proposalID}/reject`,
+        { method: "POST" },
+      );
+      if (!res.ok) throw new Error("reject proposal");
+    },
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["sa-profile-proposals", orgId, selectedSA] });
     },
   });
 
@@ -1048,6 +1141,96 @@ export default function OrgServiceAccountsPage() {
                   </li>
                 ))}
               </ul>
+            </div>
+
+            <h2 className="mt-10 text-lg font-semibold text-foreground">Pending profile proposals</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              AI-generated profile updates require approval before they become a new profile version.
+            </p>
+            <div className="mt-3 space-y-3">
+              {(profileProposalsQ.data?.proposals ?? []).map((p) => (
+                <div key={p.id} className="rounded-sm border border-border bg-card p-3">
+                  <div className="text-xs text-muted-foreground">
+                    Proposed {new Date(p.created_at).toLocaleString()}
+                  </div>
+                  <pre className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap rounded-sm border border-border bg-background p-2 font-mono text-xs text-foreground">
+                    {p.proposed_append_md}
+                  </pre>
+                  <div className="mt-2 flex gap-2">
+                    <button
+                      type="button"
+                      className="rounded-sm bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
+                      disabled={acceptProfileProposalM.isPending}
+                      onClick={() => acceptProfileProposalM.mutate(p.id)}
+                    >
+                      Accept
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded-sm border border-border px-3 py-1.5 text-sm disabled:opacity-50"
+                      disabled={rejectProfileProposalM.isPending}
+                      onClick={() => rejectProfileProposalM.mutate(p.id)}
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              ))}
+              {profileProposalsQ.isSuccess && (profileProposalsQ.data?.proposals ?? []).length === 0 ? (
+                <p className="text-xs text-muted-foreground">No pending profile proposals.</p>
+              ) : null}
+            </div>
+
+            <h2 className="mt-10 text-lg font-semibold text-foreground">Persistent memory</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Organization-wide memory for this AI staff member. Deleting items invalidates future retrieval.
+            </p>
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <div className="rounded-sm border border-border bg-card p-3">
+                <h3 className="text-sm font-semibold text-foreground">Episodes</h3>
+                <ul className="mt-2 space-y-2">
+                  {(memoryEpisodesQ.data?.episodes ?? []).slice(0, 20).map((e) => (
+                    <li key={e.id} className="rounded-sm border border-border p-2">
+                      <div className="text-sm text-foreground">{e.summary}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{e.details}</div>
+                      <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{new Date(e.created_at).toLocaleString()}</span>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 text-red-600 hover:underline disabled:opacity-50"
+                          disabled={deleteEpisodeM.isPending}
+                          onClick={() => deleteEpisodeM.mutate(e.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Delete
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="rounded-sm border border-border bg-card p-3">
+                <h3 className="text-sm font-semibold text-foreground">Facts</h3>
+                <ul className="mt-2 space-y-2">
+                  {(memoryFactsQ.data?.facts ?? []).slice(0, 20).map((f) => (
+                    <li key={f.id} className="rounded-sm border border-border p-2">
+                      <div className="text-sm text-foreground">{f.statement}</div>
+                      <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{new Date(f.created_at).toLocaleString()}</span>
+                        <button
+                          type="button"
+                          className="inline-flex items-center gap-1 text-red-600 hover:underline disabled:opacity-50"
+                          disabled={deleteFactM.isPending}
+                          onClick={() => deleteFactM.mutate(f.id)}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                          Delete
+                        </button>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           </div>
         ) : null}

@@ -1,6 +1,6 @@
-# Custom domains for self-hosted Hyperspeed
+# Custom domains for deployed Hyperspeed
 
-This document covers public hostname setup for teams that run Hyperspeed on their own infrastructure (Docker on a VPS or similar).
+This document covers hostname setup for Hyperspeed running on infrastructure we control (Docker on a VPS or similar).
 
 ## Product rule
 

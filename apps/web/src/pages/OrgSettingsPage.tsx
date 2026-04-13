@@ -51,6 +51,23 @@ export default function OrgSettingsPage() {
   const qc = useQueryClient();
   if (!orgId) return null;
 
+  const myPermsQ = useQuery({
+    queryKey: ["myOrgPermissions", orgId],
+    enabled: !!orgId,
+    queryFn: async () => {
+      const res = await apiFetch(
+        `/api/v1/organizations/${orgId}/me/permissions`,
+      );
+      if (!res.ok) throw new Error("permissions");
+      return (await res.json()) as { permissions: string[] };
+    },
+  });
+
+  const permSet = myPermsQ.data?.permissions ?? [];
+  const canOrgManage = permSet.includes("org.manage");
+  const canMembersManage = permSet.includes("org.members.manage");
+  const canSpaceMembersManage = permSet.includes("space.members.manage");
+
   const featuresQ = useQuery({
     queryKey: ["org-features", orgId],
     enabled: !!orgId,
@@ -64,7 +81,7 @@ export default function OrgSettingsPage() {
 
   const signupReqQ = useQuery({
     queryKey: ["signup-requests", orgId],
-    enabled: !!orgId,
+    enabled: !!orgId && myPermsQ.isSuccess && canMembersManage,
     queryFn: async () => {
       const res = await apiFetch(
         `/api/v1/organizations/${orgId}/signup-requests`,
@@ -190,6 +207,10 @@ export default function OrgSettingsPage() {
 
   const fe = featuresQ.data;
   const pending = signupReqQ.data ?? [];
+  const permsReady = myPermsQ.isSuccess;
+  const noSettingsAccess =
+    permsReady && !canOrgManage && !canMembersManage;
+
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-background">
       <div className="mx-auto max-w-4xl px-4 py-8">
@@ -208,7 +229,26 @@ export default function OrgSettingsPage() {
           </p>
         </header>
 
+        {myPermsQ.isLoading ? (
+          <p className="mt-6 text-sm text-muted-foreground">Loading permissions…</p>
+        ) : null}
+        {myPermsQ.isError ? (
+          <p className="mt-6 text-sm text-destructive">
+            Could not load your permissions for this workspace.
+          </p>
+        ) : null}
+        {noSettingsAccess ? (
+          <p className="mt-6 text-sm text-muted-foreground">
+            You don&apos;t have permission to change workspace settings. Ask an administrator
+            to grant{" "}
+            <span className="font-mono text-xs">org.manage</span> or{" "}
+            <span className="font-mono text-xs">org.members.manage</span> on your role.
+          </p>
+        ) : null}
+
+        {permsReady ? (
         <div className="mt-8 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {canOrgManage ? (
           <div className="rounded-sm border border-border bg-card p-4 sm:col-span-2">
             <div className="text-sm font-semibold text-foreground">Domain &amp; URL</div>
             <p className="mt-1 text-sm text-muted-foreground">
@@ -318,7 +358,18 @@ export default function OrgSettingsPage() {
               </form>
             )}
           </div>
+          ) : permsReady && !canOrgManage ? (
+            <div className="rounded-sm border border-border bg-card p-4 sm:col-span-2">
+              <div className="text-sm font-semibold text-foreground">Domain &amp; URL</div>
+              <p className="mt-2 text-sm text-muted-foreground">
+                Only workspace administrators with{" "}
+                <span className="font-mono text-xs">org.manage</span> can edit the team URL and
+                trusted origin for this workspace.
+              </p>
+            </div>
+          ) : null}
 
+          {canMembersManage ? (
           <Link
             to={`/o/${orgId}/roles`}
             className="rounded-sm border border-border bg-card p-4 hover:bg-accent/20"
@@ -328,7 +379,9 @@ export default function OrgSettingsPage() {
               Create roles and assign them to workspace members.
             </div>
           </Link>
+          ) : null}
 
+          {canSpaceMembersManage ? (
           <Link
             to={`/o/${orgId}/settings/spaces`}
             className="rounded-sm border border-border bg-card p-4 hover:bg-accent/20"
@@ -338,7 +391,9 @@ export default function OrgSettingsPage() {
               Choose which roles can access each space.
             </div>
           </Link>
+          ) : null}
 
+          {canMembersManage ? (
           <Link
             to={`/o/${orgId}/settings/service-accounts`}
             className="rounded-sm border border-border bg-card p-4 hover:bg-accent/20 sm:col-span-2"
@@ -348,7 +403,9 @@ export default function OrgSettingsPage() {
               Service accounts, Cursor &amp; OpenRouter org API keys, agent profiles, and MCP setup.
             </div>
           </Link>
+          ) : null}
 
+          {canOrgManage ? (
           <div className="rounded-sm border border-border bg-card p-4 sm:col-span-2">
             <div className="text-sm font-semibold text-foreground">Datasets feature</div>
             <div className="mt-1 text-sm text-muted-foreground">
@@ -366,7 +423,9 @@ export default function OrgSettingsPage() {
               Enabled
             </label>
           </div>
+          ) : null}
 
+          {canOrgManage ? (
           <div className="rounded-sm border border-border bg-card p-4 sm:col-span-2">
             <div className="text-sm font-semibold text-foreground">Open registration</div>
             <div className="mt-1 text-sm text-muted-foreground">
@@ -385,7 +444,9 @@ export default function OrgSettingsPage() {
               Allow open sign-ups
             </label>
           </div>
+          ) : null}
 
+          {canMembersManage ? (
           <div className="rounded-sm border border-border bg-card p-4 sm:col-span-2">
             <div className="text-sm font-semibold text-foreground">
               Pending sign-up requests
@@ -439,7 +500,9 @@ export default function OrgSettingsPage() {
               </ul>
             )}
           </div>
+          ) : null}
         </div>
+        ) : null}
       </div>
     </div>
   );

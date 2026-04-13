@@ -72,6 +72,8 @@ func (h *Harness) Invoke(ctx context.Context, orgID, userID uuid.UUID, in Invoke
 		return h.toolProposePatch(ctx, orgID, userID, in.Arguments)
 	case "space.file.create_text":
 		return h.toolCreateTextFile(ctx, orgID, userID, in.Arguments)
+	case "space.folder.create":
+		return h.toolCreateFolder(ctx, orgID, userID, in.Arguments)
 	case "space.automation.propose":
 		return h.toolAutomationPropose(ctx, orgID, userID, in.Arguments)
 	default:
@@ -326,6 +328,57 @@ func (h *Harness) toolCreateTextFile(ctx context.Context, orgID, userID uuid.UUI
 		return nil, err
 	}
 	if err := h.OS.Put(ctx, storageKey, mime, bytes.NewReader(b), &size); err != nil {
+		return nil, err
+	}
+	return map[string]any{"node": n}, nil
+}
+
+type createFolderArgs struct {
+	SpaceID  uuid.UUID  `json:"space_id"`
+	ParentID *uuid.UUID `json:"parent_id"`
+	Name     string     `json:"name"`
+}
+
+func (h *Harness) toolCreateFolder(ctx context.Context, orgID, userID uuid.UUID, raw json.RawMessage) (any, error) {
+	ok, err := rbac.HasPermission(ctx, h.Store, orgID, userID, rbac.FilesWrite)
+	if err != nil || !ok {
+		return nil, errForbiddenFiles()
+	}
+	var a createFolderArgs
+	if err := json.Unmarshal(raw, &a); err != nil {
+		return nil, errBadArgs()
+	}
+	if a.SpaceID == uuid.Nil {
+		return nil, errBadArgs()
+	}
+	name := strings.TrimSpace(a.Name)
+	if name == "" || strings.ContainsAny(name, `/\`) {
+		return nil, errBadArgs()
+	}
+	if _, err := h.Store.GetSpace(ctx, orgID, a.SpaceID); err != nil {
+		if err == pgx.ErrNoRows {
+			return nil, errNotFound()
+		}
+		return nil, err
+	}
+	ok, err = h.Store.UserCanAccessSpace(ctx, orgID, a.SpaceID, userID)
+	if err != nil || !ok {
+		return nil, errForbiddenSpace()
+	}
+	if a.ParentID != nil && *a.ParentID != uuid.Nil {
+		par, err := h.Store.FileNodeByID(ctx, a.SpaceID, *a.ParentID)
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				return nil, errNotFound()
+			}
+			return nil, err
+		}
+		if par.DeletedAt != nil || par.Kind != store.FileNodeFolder {
+			return nil, errors.New("parent must be a folder")
+		}
+	}
+	n, err := h.Store.CreateFolderNode(ctx, a.SpaceID, a.ParentID, name, userID)
+	if err != nil {
 		return nil, err
 	}
 	return map[string]any{"node": n}, nil

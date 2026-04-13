@@ -1,4 +1,5 @@
 services:
+  # Dev overlay only exposes service ports; state still uses named volumes from docker-compose.yml.
   postgres:
     ports:
       - "5432:5432"

@@ -15,6 +15,9 @@ func TestAgentToolSpecsIncludesCreateText(t *testing.T) {
 	if !strings.Contains(got, "space.file.create_text") {
 		t.Fatalf("missing create_text in %s", got)
 	}
+	if !strings.Contains(got, "space.folder.create") {
+		t.Fatalf("missing folder.create in %s", got)
+	}
 }
 
 func TestHyperspeedFunctionToolsOpenRouterJSON(t *testing.T) {

@@ -33,6 +33,7 @@ import (
 	"hyperspeed/api/internal/openrouter"
 	"hyperspeed/api/internal/overduetasks"
 	"hyperspeed/api/internal/rest"
+	"hyperspeed/api/internal/staffmemory"
 	"hyperspeed/api/internal/store"
 	"hyperspeed/api/internal/terminal"
 	"hyperspeed/api/internal/version"
@@ -134,6 +135,7 @@ func main() {
 	inviteH := &rest.InviteHandler{Store: st}
 	saH := &rest.ServiceAccountsHandler{Store: st}
 	sapH := &rest.ServiceAccountProfileHandler{Store: st}
+	samH := &rest.ServiceAccountMemoryHandler{Store: st}
 	harness := &agenttools.Harness{Store: st, OS: objStore}
 	agH := &rest.AgentInvokeHandler{Store: st, Harness: harness}
 	propH := &rest.FileProposalHandler{Store: st, OS: objStore}
@@ -171,6 +173,8 @@ func main() {
 	}()
 	overdueW := &overduetasks.Worker{Store: st, Bus: bus}
 	go overdueW.Start(workerCtx)
+	staffMemoryW := &staffmemory.Worker{Store: st}
+	go staffMemoryW.Start(workerCtx)
 
 	r := chi.NewRouter()
 	r.Use(hsmw.RequestID())
@@ -281,6 +285,7 @@ func main() {
 				r.Route("/{orgID}", func(r chi.Router) {
 					r.Use(hsmw.RequireOrgMember(st))
 					r.Get("/", orgH.Get)
+					r.Get("/me/permissions", orgH.MyPermissions)
 					r.Patch("/", orgH.Patch)
 					r.Get("/members", orgH.Members)
 					r.Get("/peek/ai-activity", peekH.AIActivity)
@@ -318,6 +323,13 @@ func main() {
 					r.Get("/service-accounts/{serviceAccountID}/profile/versions", sapH.Versions)
 					r.Get("/service-accounts/{serviceAccountID}/profile", sapH.Get)
 					r.Patch("/service-accounts/{serviceAccountID}/profile", sapH.Patch)
+					r.Get("/service-accounts/{serviceAccountID}/memory/episodes", samH.Episodes)
+					r.Get("/service-accounts/{serviceAccountID}/memory/facts", samH.Facts)
+					r.Delete("/service-accounts/{serviceAccountID}/memory/episodes/{episodeID}", samH.DeleteEpisode)
+					r.Delete("/service-accounts/{serviceAccountID}/memory/facts/{factID}", samH.DeleteFact)
+					r.Get("/service-accounts/{serviceAccountID}/profile/proposals", samH.ProfileProposals)
+					r.Post("/service-accounts/{serviceAccountID}/profile/proposals/{proposalID}/accept", samH.AcceptProfileProposal)
+					r.Post("/service-accounts/{serviceAccountID}/profile/proposals/{proposalID}/reject", samH.RejectProfileProposal)
 					r.Patch("/service-accounts/{serviceAccountID}", saH.Patch)
 					r.Delete("/service-accounts/{serviceAccountID}", saH.Delete)
 					r.Get("/ssh-connections", sshConnH.List)

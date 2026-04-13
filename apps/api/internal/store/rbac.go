@@ -311,6 +311,32 @@ func (s *Store) MemberHasPermission(ctx context.Context, orgID, userID uuid.UUID
 	return ok, err
 }
 
+// MemberEffectivePermissions returns distinct permission strings granted to the user in the org
+// via member_roles × role_permissions. Call EnsureSystemRoles and EnsureLegacyRoleMapped first
+// so legacy admins are mapped to RBAC like rbac.HasPermission.
+func (s *Store) MemberEffectivePermissions(ctx context.Context, orgID, userID uuid.UUID) ([]string, error) {
+	rows, err := s.Pool.Query(ctx, `
+		SELECT DISTINCT rp.permission
+		FROM member_roles mr
+		JOIN role_permissions rp ON rp.role_id = mr.role_id
+		WHERE mr.organization_id = $1 AND mr.user_id = $2
+		ORDER BY rp.permission
+	`, orgID, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var p string
+		if err := rows.Scan(&p); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 // EnsureLegacyRoleMapped ensures a user has at least one member_roles entry based on
 // their legacy organization_members.role, to support a smooth transition.
 func (s *Store) EnsureLegacyRoleMapped(ctx context.Context, orgID, userID uuid.UUID) error {

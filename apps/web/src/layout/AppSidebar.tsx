@@ -580,17 +580,38 @@ export function AppSidebar() {
     })),
   });
 
-  const isOrgAdmin = useMemo(() => {
+  const myPermissionsQs = useQueries({
+    queries: orgs.map((o) => ({
+      queryKey: ["myOrgPermissions", o.id] as const,
+      enabled: !!o.id && !!meId,
+      queryFn: async () => {
+        const res = await apiFetch(
+          `/api/v1/organizations/${o.id}/me/permissions`,
+        );
+        if (!res.ok) throw new Error("permissions");
+        const j = (await res.json()) as { permissions: string[] };
+        return j.permissions;
+      },
+    })),
+  });
+
+  /** Workspace settings / AI staff: RBAC org.manage or org.members.manage, or legacy org admin column. */
+  const canOpenWorkspaceSettings = useMemo(() => {
     const m = new Map<string, boolean>();
     for (let i = 0; i < orgs.length; i++) {
       const oid = orgs[i]?.id;
+      if (!oid || !meId) continue;
+      const perms = myPermissionsQs[i]?.data;
       const members = orgMembersQs[i]?.data;
-      if (!oid || !meId || !members) continue;
-      const mine = members.find((x) => x.user_id === meId);
-      m.set(oid, mine?.role === "admin");
+      const mine = members?.find((x) => x.user_id === meId);
+      const legacyAdmin = mine?.role === "admin";
+      const rbac =
+        perms?.includes("org.manage") ||
+        perms?.includes("org.members.manage");
+      m.set(oid, Boolean(rbac || legacyAdmin));
     }
     return m;
-  }, [orgs, orgMembersQs, meId]);
+  }, [orgs, myPermissionsQs, orgMembersQs, meId]);
 
   const accessSummaryQs = useQueries({
     queries: orgs.map((o) => ({
@@ -1302,7 +1323,7 @@ export function AppSidebar() {
                         <span className="min-w-0 truncate">{o.name}</span>
                       </span>
                     </button>
-                    {isOrgAdmin.get(o.id) ? (
+                    {canOpenWorkspaceSettings.get(o.id) ? (
                       <button
                         type="button"
                         className="flex items-center justify-center rounded-sm px-2 text-muted-foreground hover:bg-accent hover:text-foreground"

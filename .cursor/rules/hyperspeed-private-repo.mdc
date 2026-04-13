@@ -1,0 +1,17 @@
+---
+description: Private Hyperspeed monorepo — no public distribution workflow
+alwaysApply: true
+---
+
+# Private repository
+
+This workspace is the **internal Hyperspeed codebase** (private). There is **no** separate “public OSS” export path, cherry-pick workflow, or requirement to coordinate with a public `main`.
+
+## Contributors and agents
+
+- Use normal **branch and PR** (or equivalent) discipline for risky changes.
+- Do **not** assume end users clone from a public URL or follow generic self-host instructions aimed at outside teams—docs in this repo describe **our** deployment and operations unless explicitly marked otherwise.
+
+## Local git hooks
+
+Optional: run `scripts/setup-git-hooks.ps1` or `scripts/setup-git-hooks.sh` to use `.githooks/` (currently a no-op **pre-push**; extend there if the team adds checks).

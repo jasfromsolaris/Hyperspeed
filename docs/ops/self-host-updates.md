@@ -1,4 +1,4 @@
-# Self-host version metadata and optional update notices
+# Version metadata and optional update notices
 
 The API reports its build **version** and **git SHA** on `GET /health` and `GET /api/v1/public/instance`. Operators inject these at **image build time** (see [`apps/api/Dockerfile`](../../apps/api/Dockerfile) `VERSION` / `GIT_SHA` build args).
 

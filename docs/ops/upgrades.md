@@ -1,4 +1,4 @@
-## Upgrades (self-host)
+## Upgrades (Docker deployments)
 
 ### How schema migrations work
 The API runs database migrations automatically on startup. Migrations are stored in:

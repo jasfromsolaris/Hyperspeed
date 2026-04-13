@@ -88,3 +88,21 @@ func TestInvokeBlocksCreateTextInAskMode(t *testing.T) {
 		t.Fatalf("expected mode_policy, got %v", err)
 	}
 }
+
+func TestInvokeBlocksCreateFolderInAskMode(t *testing.T) {
+	h := &Harness{
+		Store: &store.Store{},
+		OS:    &files.ObjectStore{},
+	}
+	_, err := h.Invoke(context.Background(), uuid.Nil, uuid.Nil, InvokeInput{
+		Tool: "space.folder.create",
+		Mode: "ask",
+	})
+	if err == nil {
+		t.Fatal("expected mode_policy error")
+	}
+	he, ok := IsHarnessError(err)
+	if !ok || he.Code != "mode_policy" {
+		t.Fatalf("expected mode_policy, got %v", err)
+	}
+}

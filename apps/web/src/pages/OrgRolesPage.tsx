@@ -78,6 +78,18 @@ export default function OrgRolesPage() {
   const [editName, setEditName] = useState("");
   const [editPerms, setEditPerms] = useState<Set<Perm>>(new Set());
 
+  const myPermsQ = useQuery({
+    queryKey: ["myOrgPermissions", orgId],
+    enabled: !!orgId,
+    queryFn: async () => {
+      const res = await apiFetch(
+        `/api/v1/organizations/${orgId}/me/permissions`,
+      );
+      if (!res.ok) throw new Error("permissions");
+      return (await res.json()) as { permissions: string[] };
+    },
+  });
+
   const rolesQ = useQuery({
     queryKey: ["roles", orgId],
     enabled: !!orgId,
@@ -192,6 +204,10 @@ export default function OrgRolesPage() {
       if (!res.ok) throw new Error("set member roles");
       return res.json() as Promise<{ ok: boolean }>;
     },
+    onSuccess: async (_data, vars) => {
+      await qc.invalidateQueries({ queryKey: ["memberRoleIds", orgId, vars.userId] });
+      await qc.invalidateQueries({ queryKey: ["myOrgPermissions", orgId] });
+    },
   });
 
   const createInvite = useMutation({
@@ -219,6 +235,7 @@ export default function OrgRolesPage() {
     onSuccess: async () => {
       await qc.invalidateQueries({ queryKey: ["orgMembers", orgId] });
       await qc.invalidateQueries({ queryKey: ["memberRoleIds", orgId] });
+      await qc.invalidateQueries({ queryKey: ["myOrgPermissions", orgId] });
     },
   });
 
@@ -239,11 +256,13 @@ export default function OrgRolesPage() {
 
   const canUseViewAs = useMemo(() => {
     if (!meId) return false;
+    const perms = myPermsQ.data?.permissions;
+    if (perms?.includes("org.manage")) return true;
     const legacy = (membersQ.data ?? []).find((m) => m.user_id === meId)?.role;
     if (legacy === "admin") return true;
     if (ownerRoleId && myRoleIds.includes(ownerRoleId)) return true;
     return false;
-  }, [meId, membersQ.data, ownerRoleId, myRoleIds]);
+  }, [meId, myPermsQ.data, membersQ.data, ownerRoleId, myRoleIds]);
 
   if (!orgId) return null;
 
