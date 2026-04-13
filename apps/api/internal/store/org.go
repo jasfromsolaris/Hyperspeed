@@ -220,6 +220,17 @@ func (s *Store) MemberRole(ctx context.Context, orgID, userID uuid.UUID) (Member
 	return r, err
 }
 
+// IsLegacyOrgAdmin reports whether organization_members.role is the legacy admin value.
+// RBAC should match this, but when member_roles/role_permissions drift, API handlers can still
+// treat legacy admins as full workspace owners (see rbac.HasPermission).
+func (s *Store) IsLegacyOrgAdmin(ctx context.Context, orgID, userID uuid.UUID) (bool, error) {
+	r, err := s.MemberRole(ctx, orgID, userID)
+	if err != nil {
+		return false, err
+	}
+	return r == RoleAdmin, nil
+}
+
 func (s *Store) OrganizationIDBySpace(ctx context.Context, spaceID uuid.UUID) (uuid.UUID, error) {
 	var oid uuid.UUID
 	err := s.Pool.QueryRow(ctx, `SELECT organization_id FROM spaces WHERE id = $1`, spaceID).Scan(&oid)

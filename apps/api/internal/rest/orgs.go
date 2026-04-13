@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 
 	"github.com/go-chi/chi/v5"
@@ -128,7 +129,28 @@ func (h *OrgHandler) MyPermissions(w http.ResponseWriter, r *http.Request) {
 	if perms == nil {
 		perms = []string{}
 	}
+	if ok, err := h.Store.IsLegacyOrgAdmin(r.Context(), orgID, uid); err == nil && ok {
+		perms = mergeLegacyAdminPermissionStrings(perms)
+	}
 	httpx.JSON(w, http.StatusOK, map[string]any{"permissions": perms})
+}
+
+// mergeLegacyAdminPermissionStrings ensures the SPA sees the same capability set as rbac.HasPermission
+// grants for organization_members.role=admin when RBAC rows are missing or incomplete.
+func mergeLegacyAdminPermissionStrings(have []string) []string {
+	set := make(map[string]struct{}, len(have)+len(rbac.AllPermissions))
+	for _, p := range have {
+		set[p] = struct{}{}
+	}
+	for _, p := range rbac.AllPermissions {
+		set[string(p)] = struct{}{}
+	}
+	out := make([]string, 0, len(set))
+	for p := range set {
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out
 }
 
 func (h *OrgHandler) Patch(w http.ResponseWriter, r *http.Request) {
