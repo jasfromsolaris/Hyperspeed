@@ -337,34 +337,26 @@ func (s *Store) MemberEffectivePermissions(ctx context.Context, orgID, userID uu
 	return out, rows.Err()
 }
 
-// EnsureLegacyRoleMapped ensures a user has at least one member_roles entry based on
-// their legacy organization_members.role, to support a smooth transition.
+// EnsureLegacyRoleMapped ensures RBAC rows reflect legacy organization_members.role.
+// Legacy "admin" is mapped to the system "Owner" role (org.manage, etc.). That assignment
+// must run even when the user already has other member_roles rows; otherwise an admin
+// who was given only a custom role would lose org.manage while still being legacy admin.
 func (s *Store) EnsureLegacyRoleMapped(ctx context.Context, orgID, userID uuid.UUID) error {
-	ids, err := s.MemberRoleIDs(ctx, orgID, userID)
-	if err != nil {
+	if err := s.EnsureSystemRoles(ctx, orgID); err != nil {
 		return err
-	}
-	if len(ids) > 0 {
-		return nil
 	}
 	legacy, err := s.MemberRole(ctx, orgID, userID)
 	if err != nil {
 		return err
 	}
-	if err := s.EnsureSystemRoles(ctx, orgID); err != nil {
-		return err
-	}
 	// Back-compat: map legacy org "admin" to the new system "Owner" role.
-	// Legacy "member" gets no automatic role assignment.
 	if legacy != RoleAdmin {
 		return nil
 	}
-	target := "Owner"
-	rid, err := s.SystemRoleIDByName(ctx, orgID, target)
+	rid, err := s.SystemRoleIDByName(ctx, orgID, "Owner")
 	if err != nil {
 		return err
 	}
-	// Assign.
 	_, err = s.Pool.Exec(ctx, `
 		INSERT INTO member_roles (organization_id, user_id, role_id)
 		VALUES ($1, $2, $3)
