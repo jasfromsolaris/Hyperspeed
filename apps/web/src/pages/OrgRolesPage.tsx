@@ -2,6 +2,7 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { useMemo, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { apiFetch } from "../api/http";
+import { coerceOrgPermissionList } from "../api/permissions";
 import type { OrgMemberWithUser, RoleWithPermissions, UUID } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { useViewAsRoles } from "../auth/ViewAsRolesContext";
@@ -256,8 +257,8 @@ export default function OrgRolesPage() {
 
   const canUseViewAs = useMemo(() => {
     if (!meId) return false;
-    const perms = myPermsQ.data?.permissions;
-    if (perms?.includes("org.manage")) return true;
+    const perms = coerceOrgPermissionList(myPermsQ.data);
+    if (perms.includes("org.manage")) return true;
     const legacy = (membersQ.data ?? []).find((m) => m.user_id === meId)?.role;
     if (legacy === "admin") return true;
     if (ownerRoleId && myRoleIds.includes(ownerRoleId)) return true;

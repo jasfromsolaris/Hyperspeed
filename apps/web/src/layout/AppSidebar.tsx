@@ -22,6 +22,7 @@ import { type FormEvent, type MouseEvent, useEffect, useMemo, useState } from "r
 import { NavLink, useLocation, useNavigate, useParams } from "react-router-dom";
 import { apiFetch } from "../api/http";
 import { fetchOrganizationsList } from "../api/orgs";
+import { coerceOrgPermissionList } from "../api/permissions";
 import type { Board, ChatRoom, FileNode, OrgFeatures, Project } from "../api/types";
 import { useAuth } from "../auth/AuthContext";
 import { useViewAsRolesController } from "../auth/ViewAsRolesContext";
@@ -590,7 +591,8 @@ export function AppSidebar() {
         );
         if (!res.ok) throw new Error("permissions");
         const j = (await res.json()) as { permissions: string[] };
-        return j.permissions;
+        // Same shape as OrgSettingsPage / OrgRolesPage so React Query cache stays consistent.
+        return j;
       },
     })),
   });
@@ -601,7 +603,7 @@ export function AppSidebar() {
     for (let i = 0; i < orgs.length; i++) {
       const oid = orgs[i]?.id;
       if (!oid || !meId) continue;
-      const perms = myPermissionsQs[i]?.data;
+      const perms = coerceOrgPermissionList(myPermissionsQs[i]?.data);
       const members = orgMembersQs[i]?.data;
       const mine = members?.find((x) => x.user_id === meId);
       const legacyAdmin = mine?.role === "admin";

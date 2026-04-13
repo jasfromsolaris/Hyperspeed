@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { FormEvent, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { apiFetch } from "../api/http";
+import { coerceOrgPermissionList } from "../api/permissions";
 import type { Organization, OrgFeatures, SignupRequestRow } from "../api/types";
 
 function buildIntendedUrlSaveActivity(org: Organization): string[] {
@@ -63,7 +64,7 @@ export default function OrgSettingsPage() {
     },
   });
 
-  const permSet = myPermsQ.data?.permissions ?? [];
+  const permSet = coerceOrgPermissionList(myPermsQ.data);
   const canOrgManage = permSet.includes("org.manage");
   const canMembersManage = permSet.includes("org.members.manage");
   const canSpaceMembersManage = permSet.includes("space.members.manage");
